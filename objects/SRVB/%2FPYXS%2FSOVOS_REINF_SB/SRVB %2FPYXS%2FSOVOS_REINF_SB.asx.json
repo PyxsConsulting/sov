@@ -22,7 +22,7 @@
     "VERSION":"A",
     "CHANGED_BY":"SAP_CUSTOMER",
     "CHANGED_ON":"2026-04-16",
-    "CHANGED_AT":"17:05:17",
+    "CHANGED_AT":"19:34:35",
     "ABAP_LANGUAGE_VERSION":"5"
    }
   ]
@@ -34,8 +34,8 @@
    {
     "SRVB_NAME":"/PYXS/SOVOS_REINF_SB",
     "VERSION":"A",
-    "LANGUAGE":"E",
-    "DESCRIPTION":""
+    "LANGUAGE":"P",
+    "DESCRIPTION":"/PYXS/SOVOS_REINF_SB"
    }
   ]
  },
@@ -53,17 +53,6 @@
     "SERVICE_BUILD_VERSION":"",
     "SRVDNAME":"/PYXS/SOVOS_REINF_SD",
     "IS_SAP_SERVICE":"-"
-   },
-   {
-    "SRVB_NAME":"/PYXS/SOVOS_REINF_SB",
-    "VERSION":"A",
-    "SERVICE_NAME":"Lc116",
-    "SERVICE_VERSION":1,
-    "SERVICE_MINOR_VERSION":0,
-    "SERVICE_PATCH_VERSION":0,
-    "SERVICE_BUILD_VERSION":"",
-    "SRVDNAME":"/PYXS/SD_LC116",
-    "IS_SAP_SERVICE":"-"
    }
   ]
  },
@@ -79,11 +68,11 @@
     "SRCSYSTEM":"...",
     "AUTHOR":"SAP_CUSTOMER",
     "SRCDEP":"",
-    "DEVCLASS":"/PYXS/SOVOS_REINF",
+    "DEVCLASS":"/PYXS/SOVOS",
     "GENFLAG":"",
     "EDTFLAG":"",
     "CPROJECT":" L",
-    "MASTERLANG":"E",
+    "MASTERLANG":"P",
     "VERSID":"",
     "PAKNOCHECK":"",
     "OBJSTABLTY":"",
@@ -91,8 +80,8 @@
     "CRELEASE":"",
     "DELFLAG":"",
     "TRANSLTTXT":"",
-    "CREATED_ON":"2026-03-16",
-    "CHECK_DATE":"2026-03-16",
+    "CREATED_ON":"2026-04-16",
+    "CHECK_DATE":"2026-04-16",
     "CHECK_CFG":""
    }
   ]
