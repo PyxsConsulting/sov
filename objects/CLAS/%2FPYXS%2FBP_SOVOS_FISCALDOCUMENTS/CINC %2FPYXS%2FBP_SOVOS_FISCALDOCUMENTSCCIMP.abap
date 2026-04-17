@@ -1032,6 +1032,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
         referenceproducttype TYPE i_producttype-referenceproducttype,
         unitofmeasureisocode TYPE i_unitofmeasure-unitofmeasureisocode,
         unitofmeasure_e      TYPE i_unitofmeasure-unitofmeasure_e,
+        unitofmeasurename    TYPE i_unitofmeasuretext-unitofmeasurename,
         glaccountname        TYPE i_glaccounttextincompanycode-glaccountname,
         chartofaccounts      TYPE i_glaccount-chartofaccounts,
       END OF ty_nfitem,
@@ -2236,10 +2237,13 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knwc100-serie_subserie     = p_nfdoc-doc-br_nfseries.
       ls_objeto-knwc100-nr_documento       = p_nfdoc-doc-br_nfenumber.
 
-      ls_objeto-knwc100-dt_emissao_doc     = |{ p_nfdoc-doc-br_nfissuedate(4) }-{ p_nfdoc-doc-br_nfissuedate+4(2) }-{ p_nfdoc-doc-br_nfissuedate+6 }T| &&
-      |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
-      ls_objeto-knwc100-dt_entrada         = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T| &&
-      |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
+*      ls_objeto-knwc100-dt_emissao_doc     = |{ p_nfdoc-doc-br_nfissuedate(4) }-{ p_nfdoc-doc-br_nfissuedate+4(2) }-{ p_nfdoc-doc-br_nfissuedate+6 }T| &&
+*      |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
+*      ls_objeto-knwc100-dt_entrada         = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T| &&
+*      |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
+      ls_objeto-knwc100-dt_emissao_doc     = |{ p_nfdoc-doc-br_nfissuedate(4) }-{ p_nfdoc-doc-br_nfissuedate+4(2) }-{ p_nfdoc-doc-br_nfissuedate+6 }T00:00:00+03:00|.
+      ls_objeto-knwc100-dt_entrada         = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T00:00:00+03:00|.
+
       ls_objeto-knwc100-cd_modelo_doc      = p_nfdoc-doc-br_nfmodel.
       ls_objeto-knwc100-nr_chave_eletr     = |{ p_nfdoc-act-region }{ p_nfdoc-act-br_nfeissueyear }{ p_nfdoc-act-br_nfeissuemonth }{ p_nfdoc-act-br_nfeaccesskeycnpjorcpf }| &&
       |{ p_nfdoc-act-br_nfemodel }{ p_nfdoc-act-br_nfeseries }{ p_nfdoc-act-br_nfenumber }{ p_nfdoc-act-br_nferandomnumber }{ p_nfdoc-act-br_nfecheckdigit }|.
@@ -2410,7 +2414,7 @@ CLASS lcl_process IMPLEMENTATION.
         <item>-knwc170-cd_pessoa_rem_dest = ls_objeto-knwc100-cd_pessoa_remet_dest.
 
         <item>-knwc170-cd_produto_serv  = ls_nfitem-nf-material.
-        <item>-knwc170-unidade           = ls_nfitem-nf-baseunit.
+        <item>-knwc170-unidade          = ls_nfitem-unitofmeasure_e. "ls_nfitem-nf-baseunit.
         <item>-knwc170-qtde             = ls_nfitem-nf-quantityinbaseunit.
         <item>-knwc170-vl_unitario      = ls_nfitem-nf-netpriceamount.
 
@@ -2482,46 +2486,56 @@ CLASS lcl_process IMPLEMENTATION.
 *                <item>-knwc170-vl_icms_isento
 *               <item>-knwc170-vl_icms_outro
 *               <item>-knwc170-vl_icms_observ
-
-                ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '004'.
-                  "IF ls_tax_itm-br_nfitembaseamount > 0.
-                  "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitembaseamount.
-                  "ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
-                  "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitemotherbaseamount.
-                  "ELSE.
-                  "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitemexcludedbaseamount.
-                  "ENDIF.
-                  "<item>-knwc170-aliq_fcp_op     = ls_tax_itm-br_nfitemtaxrate.
-                  "<item>-knwc170-vl_fcp_op     = ls_tax_itm-br_nfitemtaxamount.
-                  <item>-knwc170-vl_icms_fcp_dest = ls_tax_itm-br_nfitemtaxamount.
-                ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '001'.
-                  <item>-knwc170-vl_icms_dest    = ls_tax_itm-br_nfitemtaxamount.
-                  <item>-knwc170-aliq_icms_dest  = ls_tax_itm-br_nfitemtaxrate.
-                  IF ls_tax_itm-br_nfitembaseamount > 0.
-                    <item>-knwc170-vl_bc_icms_uf_dest = ls_tax_itm-br_nfitembaseamount.
-                  ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
-                    <item>-knwc170-vl_bc_icms_uf_dest = ls_tax_itm-br_nfitemotherbaseamount.
-                  ELSE.
-                    <item>-knwc170-vl_bc_icms_uf_dest = ls_tax_itm-br_nfitemexcludedbaseamount.
-                  ENDIF.
-                ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '002'.
-                  <item>-knwc170-vl_icms_rem      = ls_tax_itm-br_nfitemtaxamount.
                 ENDIF.
+              ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '004'.
+                "IF ls_tax_itm-br_nfitembaseamount > 0.
+                "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitembaseamount.
+                "ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
+                "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitemotherbaseamount.
+                "ELSE.
+                "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitemexcludedbaseamount.
+                "ENDIF.
+                "<item>-knwc170-aliq_fcp_op     = ls_tax_itm-br_nfitemtaxrate.
+                "<item>-knwc170-vl_fcp_op     = ls_tax_itm-br_nfitemtaxamount.
+                <item>-knwc170-vl_icms_fcp_dest = ls_tax_itm-br_nfitemtaxamount.
+              ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '001'.
+                <item>-knwc170-vl_icms_dest    = ls_tax_itm-br_nfitemtaxamount.
+                <item>-knwc170-aliq_icms_dest  = ls_tax_itm-br_nfitemtaxrate.
+                IF ls_tax_itm-br_nfitembaseamount > 0.
+                  <item>-knwc170-vl_bc_icms_uf_dest = ls_tax_itm-br_nfitembaseamount.
+                ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
+                  <item>-knwc170-vl_bc_icms_uf_dest = ls_tax_itm-br_nfitemotherbaseamount.
+                ELSE.
+                  <item>-knwc170-vl_bc_icms_uf_dest = ls_tax_itm-br_nfitemexcludedbaseamount.
+                ENDIF.
+              ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '002'.
+                <item>-knwc170-vl_icms_rem      = ls_tax_itm-br_nfitemtaxamount.
               ENDIF.
             WHEN  'ICST'.
-              IF ls_tax_itm-br_nfitembaseamount > 0.
-                <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitembaseamount.
-                <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
-              ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
-                <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitemotherbaseamount.
-                <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
-              ELSE.
-                <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitemexcludedbaseamount.
-                <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+              IF ls_tax_type-br_icmspartilhasubdivisioncode IS INITIAL.
+                IF ls_tax_itm-br_nfitembaseamount > 0.
+                  <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitembaseamount.
+                  <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+                ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
+                  <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitemotherbaseamount.
+                  <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+                ELSE.
+                  <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitemexcludedbaseamount.
+                  <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+                ENDIF.
+                <item>-knwc170-aliq_icms_sub = ls_tax_itm-br_nfitemtaxrate.
+                <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
+              ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '004'.
+                <item>-knwc170-vl_fcp_st = ls_tax_itm-br_nfitemtaxamount.
+                <item>-knwc170-aliq_fcp_st = ls_tax_itm-br_nfitemtaxrate.
+                IF ls_tax_itm-br_nfitembaseamount > 0.
+                  <item>-knwc170-vl_bc_fcp_st = ls_tax_itm-br_nfitembaseamount.
+                ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
+                  <item>-knwc170-vl_bc_fcp_st = ls_tax_itm-br_nfitemotherbaseamount.
+                ELSE.
+                  <item>-knwc170-vl_bc_fcp_st = ls_tax_itm-br_nfitemexcludedbaseamount.
+                ENDIF.
               ENDIF.
-              <item>-knwc170-aliq_icms_sub = ls_tax_itm-br_nfitemtaxrate.
-              <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
-
             WHEN 'ICOP'.
               "c195 e c197
 
@@ -2641,8 +2655,8 @@ CLASS lcl_process IMPLEMENTATION.
           "Unidade de medida
           <item>-knw0190-cod_empresa        = ls_objeto-knwc100-cod_empresa.
           <item>-knw0190-cod_filial         = ls_objeto-knwc100-cod_filial.
-          <item>-knw0190-ds_unidade         = ls_nfitem-baseunit.
-          <item>-knw0190-ds_descricao         = ls_nfitem-unitofmeasure_e.
+          <item>-knw0190-ds_unidade         = ls_nfitem-unitofmeasure_e. "ls_nfitem-baseunit.
+          <item>-knw0190-ds_descricao       = ls_nfitem-unitofmeasurename."ls_nfitem-unitofmeasure_e.
           <item>-knw0190-dt_inicial         = '1900-01-01T00:00:00+03:00'.
 
           " Material/Produto
@@ -2650,7 +2664,7 @@ CLASS lcl_process IMPLEMENTATION.
           <item>-knw0200-cod_filial         = ls_objeto-knwc100-cod_filial.
           <item>-knw0200-cd_produto_serv    = ls_nfitem-nf-material.
           <item>-knw0200-ds_produto_serv    = ls_nfitem-nf-materialname.
-          <item>-knw0200-unidade            = ls_nfitem-baseunit.
+          <item>-knw0200-unidade            = ls_nfitem-unitofmeasure_e. "ls_nfitem-baseunit.
           <item>-knw0200-dt_inicial         = '1900-01-01T00:00:00+03:00'.
           "<item>-knw0200-dm_tipo_item       = '09'.
           <item>-knw0200-cd_ncm             = normalize( p_str = ls_nfitem-nf-ncmcode ).
@@ -2685,8 +2699,10 @@ CLASS lcl_process IMPLEMENTATION.
           <item>-knw0400-cod_empresa  = ls_objeto-knwc100-cod_empresa.
           <item>-knw0400-cod_filial   = ls_objeto-knwc100-cod_filial.
           <item>-knw0400-cod_grupoempresa   = ls_nfitem-nf-br_efdreinfservicecode.
-          <item>-knw0400-dt_movimento   = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T| &&
-                                             |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
+*          <item>-knw0400-dt_movimento   = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T| &&
+*                                             |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
+          <item>-knw0400-dt_movimento   = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T00:00:00+03:00|.
+
           <item>-knw0400-cd_fiscal      = ls_nfitem-nf-br_cfopcode. "ls_nfitem-nf-ncmcode.
           <item>-knw0400-ds_cd_fiscal   = p_nfdoc-doc-br_nfoperationtypedesc.
           <item>-knw0400-dt_inicial   = '1900-01-01T00:00:00+03:00'.
@@ -2757,7 +2773,7 @@ CLASS lcl_process IMPLEMENTATION.
             ls_objeto-knwc120-dt_registro = |{ ls_imp_di-br_nfimportdocregistrationdate(4) }-{ ls_imp_di-br_nfimportdocregistrationdate+4(2) }-{ ls_imp_di-br_nfimportdocregistrationdate+6 }|.
           ENDIF.
 
-          ls_objeto-knwc120-dm_importacao = ''.
+          ls_objeto-knwc120-dm_importacao = ls_imp_di-br_nfimportdeclarationtype.
           ls_objeto-knwc120-chave_registro = ''.
           ls_objeto-knwc120-id_usuario_imp = ''.
 
@@ -2958,7 +2974,7 @@ CLASS lcl_process IMPLEMENTATION.
     SELECT nf~*, a~product, a~producttype, a~baseunit,
             c~plant, c~iscoproduct,
             a~\_producttype-referenceproducttype,
-            nf~\_baseunit-unitofmeasureisocode, nf~\_baseunit-unitofmeasure_e,
+            nf~\_baseunit-unitofmeasureisocode, nf~\_baseunit-unitofmeasure_e, nf~\_baseunit\_text[ language = 'P' ]-unitofmeasurename,
             i_glaccount~\_text[ language = 'P' ]-glaccountname, i_glaccount~chartofaccounts
       FROM i_br_nfitem AS nf
       LEFT OUTER JOIN i_product AS a
