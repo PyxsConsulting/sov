@@ -17,6 +17,7 @@ CLASS /pyxs/sovos_reinf_4020builder DEFINITION
              pstdate  TYPE RANGE OF i_br_nfdocument-br_nfpostingdate,
              dsaient  TYPE RANGE OF i_br_nfdocument-br_nfarrivalordeparturedate,
              changed  TYPE RANGE OF i_br_nfdocument-lastchangedate,
+             partner  TYPE RANGE OF i_br_nfdocument-br_nfpartner,
            END OF ty_sel.
 
     DATA:
@@ -27,8 +28,9 @@ CLASS /pyxs/sovos_reinf_4020builder DEFINITION
       mt_nature        TYPE TABLE OF /pyxs/sov_natren,
       gs_branch_sov    TYPE /pyxs/sov_branch,
       sel              TYPE ty_sel,
-      mt_ret           TYPE ty_reinf.
-    TYPES ty_amount TYPE p LENGTH 16 DECIMALS 2.
+      mt_ret           TYPE ty_reinf,
+      mt_irf_types     TYPE TABLE OF /pyxs/sov_taxtype_irf.
+    TYPES            ty_amount TYPE p LENGTH 16 DECIMALS 2.
 
     TYPES: BEGIN OF ty_r1000,
              cd_empresa             TYPE string,
@@ -193,6 +195,7 @@ CLASS /pyxs/sovos_reinf_4020builder DEFINITION
              br_nfpartnercnpj             TYPE i_br_nfdocument-br_nfpartnercnpj,
              br_nfpartnername1            TYPE i_br_nfdocument-br_nfpartnername1,
              br_lc116servicecode          TYPE i_br_nfitem-br_lc116servicecode,
+             br_nftotalamount             TYPE i_br_nfdocument-br_nftotalamount,
            END OF ty_nf_item,
 
            ty_r_tax_type TYPE RANGE OF i_br_nftax-taxgroup.
@@ -210,8 +213,9 @@ CLASS /pyxs/sovos_reinf_4020builder DEFINITION
           iv_br_notafiscal  TYPE i_br_nfdocument-br_notafiscal OPTIONAL
           iv_date_begin     TYPE d OPTIONAL
           iv_date_end       TYPE d OPTIONAL
-          iv_company_doce   TYPE bukrs
-          iv_business_place TYPE char4,
+          iv_company_doce   TYPE i_companycode-companycode
+          iv_business_place TYPE i_br_businessplace-branch
+          iv_partner        TYPE i_supplier-supplier OPTIONAL,
 
       read_db IMPORTING sel TYPE ty_sel,
       build_r4020

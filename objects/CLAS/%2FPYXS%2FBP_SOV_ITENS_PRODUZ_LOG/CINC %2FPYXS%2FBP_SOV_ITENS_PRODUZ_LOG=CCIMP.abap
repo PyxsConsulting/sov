@@ -905,7 +905,7 @@ ENDMETHOD.
       ls_objeto-knwk230-dt_periodo         = lv_dt_ini.
       ls_objeto-knwk230-cd_produto_servico = ls_mov-material.
       ls_objeto-knwk230-dt_inicio_op       = format_date( iv_date = ls_mov-postingdate ).
-      ls_objeto-knwk230-dt_final_op        = format_date( iv_date = ls_mov-postingdate ).
+      ls_objeto-knwk230-dt_final_op        = format_date( iv_date = ls_mov-postingdate ). "puxa das tab join ordem de produção
       ls_objeto-knwk230-nr_doc_op          = ls_mov-manufacturingorder.
       ls_objeto-knwk230-qtde_acabada       = ls_mov-quantityinbaseunit.
 
@@ -917,6 +917,7 @@ ENDMETHOD.
 ***      ENDIF.
 
       "--- Verificar e subtrair estorno correspondente (102/132) ---
+      "estorno pela MIGO (estornando o material original)
       READ TABLE gt_estorno INTO DATA(ls_estorno)
         WITH KEY reversedmaterialdocument     = ls_mov-materialdocument
                  reversedmaterialdocumentyear = ls_mov-materialdocumentyear
@@ -925,6 +926,7 @@ ENDMETHOD.
         "Estorno sempre subtrai: para 101/131 o estorno reduz o saldo positivo
         ls_objeto-knwk230-qtde_acabada = ls_objeto-knwk230-qtde_acabada - ls_estorno-quantityinbaseunit.
       ENDIF.
+      "estorno avulso? puxa pela ordem de produção + cod do material
 
       "--- knw0200 – cadastro do produto ---
       ls_objeto-knw0200-dt_inicial        = '1900-01-01T00:00:00+03:00'.
