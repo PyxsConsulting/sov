@@ -26,7 +26,19 @@
   [
    {
     "OBJECT":"/PYXS/SOVOS_TAX_FISC",
+    "SUBOBJECT":"/PYXS/SOVOS_INV"
+   },
+   {
+    "OBJECT":"/PYXS/SOVOS_TAX_FISC",
+    "SUBOBJECT":"/PYXS/SOVOS_ITMPRD"
+   },
+   {
+    "OBJECT":"/PYXS/SOVOS_TAX_FISC",
     "SUBOBJECT":"/PYXS/SOVOS_NF"
+   },
+   {
+    "OBJECT":"/PYXS/SOVOS_TAX_FISC",
+    "SUBOBJECT":"/PYXS/SOVOS_YRINV"
    }
   ]
  },
@@ -37,8 +49,26 @@
    {
     "SPRAS":"P",
     "OBJECT":"/PYXS/SOVOS_TAX_FISC",
+    "SUBOBJECT":"/PYXS/SOVOS_INV",
+    "SUBOBJTXT":"Extração Estoque Escriturado"
+   },
+   {
+    "SPRAS":"P",
+    "OBJECT":"/PYXS/SOVOS_TAX_FISC",
+    "SUBOBJECT":"/PYXS/SOVOS_ITMPRD",
+    "SUBOBJTXT":"Extração Itens Produzidos"
+   },
+   {
+    "SPRAS":"P",
+    "OBJECT":"/PYXS/SOVOS_TAX_FISC",
     "SUBOBJECT":"/PYXS/SOVOS_NF",
     "SUBOBJTXT":"Extração Notas Fiscais"
+   },
+   {
+    "SPRAS":"P",
+    "OBJECT":"/PYXS/SOVOS_TAX_FISC",
+    "SUBOBJECT":"/PYXS/SOVOS_YRINV",
+    "SUBOBJTXT":"Extração Inventario Anual"
    }
   ]
  },
