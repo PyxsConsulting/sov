@@ -321,6 +321,8 @@ CLASS lcl_process_srv DEFINITION.
         objetos TYPE STANDARD TABLE OF ty_objetos WITH NON-UNIQUE DEFAULT KEY,
       END OF ty_main.
 
+
+
 ENDCLASS.
 
 CLASS lcl_process_srv IMPLEMENTATION.
@@ -353,7 +355,6 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
         vl_base_calculo_icms    TYPE p LENGTH 15 DECIMALS 2,
         nr_chave_acesso_cte_ref TYPE string,
       END OF ty_knwd100,
-
 
       BEGIN OF ty_integracaoconhecimentotrans,
         knwd100 TYPE ty_knwd100,
@@ -1096,7 +1097,12 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
              serie         TYPE string,
              cnpj          TYPE string,
              br_notafiscal TYPE i_br_nfdocument-br_notafiscal,
-           END OF ty_nfs.
+           END OF ty_nfs,
+
+           BEGIN OF ty_counter,
+             br_notafiscal TYPE i_br_nfdocument-br_notafiscal,
+             counter       TYPE i,
+           END OF ty_counter.
 
     CONSTANTS: gc_icms         TYPE c LENGTH 10 VALUE 'ICMS',
                gc_icms_st      TYPE c LENGTH 10 VALUE 'ST',
@@ -1165,7 +1171,8 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
                 s_branch_sov       TYPE /pyxs/sov_branch,
                 gv_icmscontributor TYPE c,
                 gv_branch_cnpj     TYPE string,
-                gs_comapany_code   TYPE i_companycode.
+                gs_comapany_code   TYPE i_companycode,
+                lt_counters        TYPE TABLE OF ty_counter.
 
     CLASS-METHODS: read_nf_db,
 
@@ -1350,6 +1357,7 @@ CLASS lcl_process IMPLEMENTATION.
       ).
 
       json_out = /pyxs/sov_json_conversion=>convert_sovos( json_out ).
+
       DATA: lr_cscn TYPE if_com_scenario_factory=>ty_query-cscn_id_range.
 
       " find CA by scenario
@@ -1512,6 +1520,7 @@ CLASS lcl_process IMPLEMENTATION.
 
       json_out = /pyxs/sov_json_conversion=>convert_sovos( json_out ).
 
+
       " find CA by scenario
       lr_cscn = VALUE #( ( sign = 'I' option = 'EQ' low = '/PYXS/SOVOS' ) ).
       lo_factory = cl_com_arrangement_factory=>create_instance( ).
@@ -1669,6 +1678,7 @@ CLASS lcl_process IMPLEMENTATION.
       ).
 
       json_out = /pyxs/sov_json_conversion=>convert_sovos( json_out ).
+
 
       " find CA by scenario
       lr_cscn = VALUE #( ( sign = 'I' option = 'EQ' low = '/PYXS/SOVOS' ) ).
@@ -2211,10 +2221,15 @@ CLASS lcl_process IMPLEMENTATION.
     ENDIF.
     popu(  ).
     SORT t_nfdocs BY doc-br_nfdirection.
+
+    CLEAR: lt_counters.
+
     LOOP AT t_nfdocs INTO DATA(p_nfdoc) WHERE doc-br_nfismunicipal <> 'X' AND doc-br_nfhasserviceitem <> 'X'.
 
-      """"""""""""""""""""""""""""""""""""""""""""""""""""""""""
-      " DE x PARA
+
+      "--------------------------------------------------
+      " D100 – CT-e (Modelo 57)
+      "--------------------------------------------------
 
       DATA(lv_sap_company_code) = p_nfdoc-doc-companycode.
       DATA(lv_sap_businessplace) = p_nfdoc-doc-businessplace.
@@ -2241,7 +2256,11 @@ CLASS lcl_process IMPLEMENTATION.
 *      |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
 *      ls_objeto-knwc100-dt_entrada         = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T| &&
 *      |{ p_nfdoc-doc-creationtime(2) }:{ p_nfdoc-doc-creationtime+2(2) }:{ p_nfdoc-doc-creationtime+4(2) }+03:00|.
-      ls_objeto-knwc100-dt_emissao_doc     = |{ p_nfdoc-doc-br_nfissuedate(4) }-{ p_nfdoc-doc-br_nfissuedate+4(2) }-{ p_nfdoc-doc-br_nfissuedate+6 }T00:00:00+03:00|.
+      IF p_nfdoc-doc-br_nfissuedate+6 = '01'.
+        ls_objeto-knwc100-dt_emissao_doc     = |{ p_nfdoc-doc-br_nfissuedate(4) }-{ p_nfdoc-doc-br_nfissuedate+4(2) }-{ p_nfdoc-doc-br_nfissuedate+6 }T12:00:00+03:00|.
+      ELSE.
+        ls_objeto-knwc100-dt_emissao_doc     = |{ p_nfdoc-doc-br_nfissuedate(4) }-{ p_nfdoc-doc-br_nfissuedate+4(2) }-{ p_nfdoc-doc-br_nfissuedate+6 }T00:00:00+03:00|.
+      ENDIF.
       ls_objeto-knwc100-dt_entrada         = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T00:00:00+03:00|.
 
       ls_objeto-knwc100-cd_modelo_doc      = p_nfdoc-doc-br_nfmodel.
@@ -2249,9 +2268,10 @@ CLASS lcl_process IMPLEMENTATION.
       |{ p_nfdoc-act-br_nfemodel }{ p_nfdoc-act-br_nfeseries }{ p_nfdoc-act-br_nfenumber }{ p_nfdoc-act-br_nferandomnumber }{ p_nfdoc-act-br_nfecheckdigit }|.
       ls_objeto-knwc100-ds_natureza        = p_nfdoc-doc-br_nfoperationtypedesc.
       ls_objeto-knwc100-cod_empresa        = p_nfdoc-doc-companycode.
-      ls_objeto-knwc100-cd_sit_documento        = COND #( WHEN p_nfdoc-doc-br_nfsituationcode IS NOT INITIAL
-                                                           THEN p_nfdoc-doc-br_nfsituationcode
-                                                           ELSE '00' ).
+      "ls_objeto-knwc100-cd_sit_documento        = COND #( WHEN p_nfdoc-doc-br_nfsituationcode IS NOT INITIAL
+      "                                                           THEN p_nfdoc-doc-br_nfsituationcode
+      "                                                           "ELSE '00' ).
+      ls_objeto-knwc100-cd_sit_documento     = p_nfdoc-doc-br_nfsituationcode.
       ls_objeto-knwc100-cod_filial         = p_nfdoc-doc-businessplace.
       ls_objeto-knwc100-cd_pessoa_remet_dest         = p_nfdoc-doc-br_nfpartner.
       ls_objeto-knwc100-dm_modal_frete = p_nfdoc-doc-freightpayer.
@@ -2273,6 +2293,28 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knwc100-vl_servico1 = '0.0'.
       ls_objeto-knwc100-vl_abat_n_trib = '0.0'.
 
+      "Joao completar, deixa todos os iguais ao c100 preenchidos
+      IF p_nfdoc-doc-br_nfmodel = '57'.
+
+        ls_objeto-integracaoconhecimentotrans-knwd100-id_empresa = p_nfdoc-doc-companycode.
+        ls_objeto-integracaoconhecimentotrans-knwd100-dm_emitente = ls_objeto-knwc100-dm_emitente.
+        ls_objeto-integracaoconhecimentotrans-knwd100-nr_documento = p_nfdoc-doc-br_nfenumber.
+        ls_objeto-integracaoconhecimentotrans-knwd100-dt_entrada = |{ p_nfdoc-doc-br_nfpostingdate(4) }-{ p_nfdoc-doc-br_nfpostingdate+4(2) }-{ p_nfdoc-doc-br_nfpostingdate+6 }T00:00:00+03:00|.
+        ls_objeto-integracaoconhecimentotrans-knwd100-dt_emissao = ls_objeto-knwc100-dt_emissao_doc.
+        ls_objeto-integracaoconhecimentotrans-knwd100-nr_serie = p_nfdoc-doc-br_nfseries.
+        ls_objeto-integracaoconhecimentotrans-knwd100-dt_aquisicao_prestacao = ls_objeto-knwc100-dt_emissao_doc.
+        ls_objeto-integracaoconhecimentotrans-knwd100-vl_total_documento = p_nfdoc-doc-br_nftotalamount.
+        ls_objeto-integracaoconhecimentotrans-knwd100-vl_total_desconto = p_nfdoc-doc-br_nfdiscountamount.
+        ls_objeto-integracaoconhecimentotrans-knwd100-vl_total_prest_servico = p_nfdoc-doc-br_nftotalamount.
+        ls_objeto-integracaoconhecimentotrans-knwd100-vl_nao_trbutado = '0.00'.
+        ls_objeto-integracaoconhecimentotrans-knwd100-dt_importacao = ls_objeto-knwc100-dt_entrada.
+        ls_objeto-integracaoconhecimentotrans-knwd100-vl_base_calculo_icms = '0.00'.
+        ls_objeto-integracaoconhecimentotrans-knwd100-vl_icms = '0.00'.
+
+        ls_objeto-integracaoconhecimentotrans-knwd100-nr_chave_acesso_cte = ls_objeto-knwc100-nr_chave_eletr.
+        ls_objeto-integracaoconhecimentotrans-knwd100-nr_chave_acesso_cte_ref = ''.
+
+      ENDIF.
 
       "CASE p_nfdoc-doc-br_nfdirection.
       CASE ls_objeto-knwc100-dm_emitente.
@@ -2400,7 +2442,20 @@ CLASS lcl_process IMPLEMENTATION.
         "------------------------------
         " C170 – Item fiscal
         "------------------------------
-        <item>-knwc170-nr_item          = ls_nfitem-nf-br_notafiscalitem.
+
+        "FIX 20260602 VVM - COD SEQUENCIAL
+        FIELD-SYMBOLS <counter> TYPE ty_counter.
+        READ TABLE lt_counters ASSIGNING <counter> WITH KEY br_notafiscal = p_nfdoc-doc-br_notafiscal.
+        IF sy-subrc <> 0.
+          INSERT VALUE #( br_notafiscal = p_nfdoc-doc-br_notafiscal
+                          counter       = 0 ) INTO TABLE lt_counters.
+          READ TABLE lt_counters ASSIGNING <counter> WITH KEY br_notafiscal = p_nfdoc-doc-br_notafiscal.
+        ENDIF.
+        <counter>-counter += 1.
+        <item>-knwc170-nr_item = CONV string( <counter>-counter ).
+        "<item>-knwc170-nr_item          = ls_nfitem-nf-br_notafiscalitem.
+        "FIX 20260602 VVM - COD SEQUENCIAL
+
         <item>-knwc170-nr_documento     = ls_objeto-knwc100-nr_documento.
         <item>-knwc170-serie_subserie     = ls_objeto-knwc100-serie_subserie .
         <item>-knwc170-dt_emissao_doc     = ls_objeto-knwc100-dt_emissao_doc .
@@ -2416,12 +2471,13 @@ CLASS lcl_process IMPLEMENTATION.
         <item>-knwc170-cd_produto_serv  = ls_nfitem-nf-material.
         <item>-knwc170-unidade          = ls_nfitem-unitofmeasure_e. "ls_nfitem-nf-baseunit.
         <item>-knwc170-qtde             = ls_nfitem-nf-quantityinbaseunit.
-        <item>-knwc170-vl_unitario      = ls_nfitem-nf-netpriceamount.
+        <item>-knwc170-vl_unitario      = ls_nfitem-nf-br_nfpriceamountwithtaxes. "ls_nfitem-nf-netpriceamount.
 
 
-        <item>-knwc170-vl_total_item    = ls_nfitem-nf-netpriceamount * ls_nfitem-nf-quantityinbaseunit.
+        <item>-knwc170-vl_total_item    = ls_nfitem-nf-br_nfvalueamountwithtaxes. "ls_nfitem-nf-netpriceamount * ls_nfitem-nf-quantityinbaseunit.
         <item>-knwc170-vl_desc_item     = ls_nfitem-nf-br_nfdiscountamountwithtaxes.
-        <item>-knwc170-vl_contabil      = ls_nfitem-nf-br_nfvalueamountwithtaxes + ls_objeto-knwc100-vl_frete + ls_objeto-knwc100-vl_seguro + ls_objeto-knwc100-vl_outras_desp - ls_objeto-knwc100-vl_desconto + ls_nfitem-nf-br_nfexemptedicmswithtaxes.
+        <item>-knwc170-vl_contabil      = ls_nfitem-nf-br_nfvalueamountwithtaxes + ls_objeto-knwc100-vl_frete + ls_objeto-knwc100-vl_seguro + ls_objeto-knwc100-vl_outras_desp - ls_objeto-knwc100-vl_desconto
+                                        + ls_nfitem-nf-br_nfexemptedicmswithtaxes + ls_nfitem-nf-br_pissttaxamount + ls_nfitem-nf-br_cofinssttaxamount.
 
         IF ls_nfitem-nf-br_materialorigin IS NOT INITIAL.
           <item>-knwc170-cd_sit_trib_icms   = ls_nfitem-nf-br_materialorigin && ls_nfitem-nf-br_icmstaxsituation.
@@ -2467,26 +2523,28 @@ CLASS lcl_process IMPLEMENTATION.
           ENDIF.
 
           CHECK ls_tax_type-br_taxtype <> 'ISUP'. "Apenas para cálculo do custo, não compoe NF
+          CHECK ls_tax_type-br_taxtype <> 'ICZF'. "Ignora ICMS Zona Franca
 
           CASE ls_tax_itm-taxgroup.
             WHEN 'ICMS'.
+
               IF ls_tax_type-br_icmspartilhasubdivisioncode IS INITIAL.
-                IF ls_tax_itm-br_nfitemtaxamount > 0.
-                  IF ls_tax_itm-br_nfitembaseamount > 0.
-                    <item>-knwc170-vl_ba_calc_icms  = ls_tax_itm-br_nfitembaseamount.
-                    <item>-knwc170-vl_icms = ls_tax_itm-br_nfitemtaxamount.
-                  ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
-                    <item>-knwc170-vl_ba_calc_icms  = ls_tax_itm-br_nfitemotherbaseamount.
-                    <item>-knwc170-vl_icms_outro = ls_tax_itm-br_nfitemtaxamount.
-                  ELSE.
-                    <item>-knwc170-vl_ba_calc_icms  = ls_tax_itm-br_nfitemexcludedbaseamount.
-                    <item>-knwc170-vl_icms_isento = ls_tax_itm-br_nfitemtaxamount.
-                  ENDIF.
-                  <item>-knwc170-aliq_icms = ls_tax_itm-br_nfitemtaxrate.
+                "IF ls_tax_itm-br_nfitemtaxamount > 0.
+                IF ls_tax_itm-br_nfitembaseamount > 0.
+                  <item>-knwc170-vl_ba_calc_icms  = ls_tax_itm-br_nfitembaseamount.
+                  <item>-knwc170-vl_icms = ls_tax_itm-br_nfitemtaxamount.
+                ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
+                  <item>-knwc170-vl_ba_calc_icms  = ls_tax_itm-br_nfitemotherbaseamount.
+                  <item>-knwc170-vl_icms_outro = ls_tax_itm-br_nfitemtaxamount.
+                ELSE.
+                  <item>-knwc170-vl_ba_calc_icms  = ls_tax_itm-br_nfitemexcludedbaseamount.
+                  <item>-knwc170-vl_icms_isento = ls_tax_itm-br_nfitemtaxamount.
+                ENDIF.
+                <item>-knwc170-aliq_icms = ls_tax_itm-br_nfitemtaxrate.
 *                <item>-knwc170-vl_icms_isento
 *               <item>-knwc170-vl_icms_outro
 *               <item>-knwc170-vl_icms_observ
-                ENDIF.
+                "ENDIF.
               ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '004'.
                 "IF ls_tax_itm-br_nfitembaseamount > 0.
                 "  <item>-knwc170-vl_bc_fcp_op  = ls_tax_itm-br_nfitembaseamount.
@@ -2510,23 +2568,28 @@ CLASS lcl_process IMPLEMENTATION.
                 ENDIF.
               ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '002'.
                 <item>-knwc170-vl_icms_rem      = ls_tax_itm-br_nfitemtaxamount.
+              ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '003'.
+                <item>-knwc170-vl_icms_fcp_dest = ls_tax_itm-br_nfitemtaxamount.
               ENDIF.
+
             WHEN  'ICST'.
               IF ls_tax_type-br_icmspartilhasubdivisioncode IS INITIAL.
                 IF ls_tax_itm-br_nfitembaseamount > 0.
                   <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitembaseamount.
-                  <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+                  <item>-knwc170-vl_icms_substit += ls_tax_itm-br_nfitemtaxamount.
                 ELSEIF ls_tax_itm-br_nfitemotherbaseamount > 0.
                   <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitemotherbaseamount.
-                  <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+                  <item>-knwc170-vl_icms_substit  += ls_tax_itm-br_nfitemtaxamount.
                 ELSE.
                   <item>-knwc170-vl_ba_calc_subs  = ls_tax_itm-br_nfitemexcludedbaseamount.
-                  <item>-knwc170-vl_icms_substit = ls_tax_itm-br_nfitemtaxamount.
+                  <item>-knwc170-vl_icms_substit  += ls_tax_itm-br_nfitemtaxamount.
                 ENDIF.
                 <item>-knwc170-aliq_icms_sub = ls_tax_itm-br_nfitemtaxrate.
                 <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
+                ls_objeto-knwc100-vl_total_mercad -= ls_tax_itm-br_nfitemtaxamount.
               ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '004'.
                 <item>-knwc170-vl_fcp_st = ls_tax_itm-br_nfitemtaxamount.
+                <item>-knwc170-vl_icms_substit  += ls_tax_itm-br_nfitemtaxamount.
                 <item>-knwc170-aliq_fcp_st = ls_tax_itm-br_nfitemtaxrate.
                 IF ls_tax_itm-br_nfitembaseamount > 0.
                   <item>-knwc170-vl_bc_fcp_st = ls_tax_itm-br_nfitembaseamount.
@@ -2618,6 +2681,7 @@ CLASS lcl_process IMPLEMENTATION.
 
                 <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
                 <item>-knwc170-dm_apur_ipi = '0'.
+                ls_objeto-knwc100-vl_total_mercad -= ls_tax_itm-br_nfitemtaxamount.
               ENDIF.
 *              IF ls_tax_itm-br_nfitemotherbaseamount IS NOT INITIAL.
 *                ls_objeto-knwc100-vl_abat_n_trib += ls_tax_itm-br_nfitemtaxamount.
@@ -2630,7 +2694,7 @@ CLASS lcl_process IMPLEMENTATION.
             WHEN 'PIS'.
               IF ls_tax_itm-br_nfitembaseamount > 0.
                 <item>-knwc170-aliq_pis = ls_tax_itm-br_nfitemtaxrate.
-                <item>-knwc170-vl_aliq_pis = ls_tax_itm-br_nfitemtaxrate.
+                "<item>-knwc170-vl_aliq_pis = ls_tax_itm-br_nfitemtaxrate.
                 <item>-knwc170-vl_ba_calc_pis = ls_tax_itm-br_nfitembaseamount.
                 <item>-knwc170-vl_pis = ls_tax_itm-br_nfitemtaxamount.
                 "<item>-knwc170-qtde_ba_calc_pis = '0.000'.
@@ -2639,7 +2703,7 @@ CLASS lcl_process IMPLEMENTATION.
             WHEN 'COFI'.
               IF ls_tax_itm-br_nfitembaseamount > 0.
                 <item>-knwc170-aliq_cof = ls_tax_itm-br_nfitemtaxrate.
-                <item>-knwc170-vl_aliq_cofins = ls_tax_itm-br_nfitemtaxrate.
+                "<item>-knwc170-vl_aliq_cofins = ls_tax_itm-br_nfitemtaxrate.
                 <item>-knwc170-vl_ba_calc_cof  = ls_tax_itm-br_nfitembaseamount.
                 <item>-knwc170-vl_cof = ls_tax_itm-br_nfitemtaxamount.
               ENDIF.
@@ -2650,6 +2714,10 @@ CLASS lcl_process IMPLEMENTATION.
             WHEN 'IRRF'.
               ls_objeto-knwc100-vl_bc_irrf += ls_tax_itm-br_nfitembaseamount.
               ls_objeto-knwc100-vl_irrf += ls_tax_itm-br_nfitemtaxamount.
+
+            WHEN 'II'.
+              <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
+              <item>-knwc170-vl_ii = ls_tax_itm-br_nfitemtaxamount.
           ENDCASE.
 
           "Unidade de medida
@@ -2801,6 +2869,7 @@ CLASS lcl_process IMPLEMENTATION.
 
           " COFINS – soma base e valor
           ls_objeto-knwc120-vl_cofins += CONV #( <itm_c120>-knwc170-vl_cof ).
+          ls_objeto-knwc120-vl_ii     += CONV #( <itm_c120>-knwc170-vl_ii ).
 
         ENDLOOP.
 
@@ -3290,6 +3359,9 @@ CLASS lcl_process IMPLEMENTATION.
       gv_proc = 'Nenhum documento processado'.
     ENDIF.
     popu(  ).
+
+    CLEAR: lt_counters.
+
     LOOP AT t_nfdocs INTO DATA(p_nfdoc)  WHERE doc-br_nfismunicipal = 'X' OR doc-br_nfhasserviceitem = 'X'.
 
       """"""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -3483,7 +3555,20 @@ CLASS lcl_process IMPLEMENTATION.
         "------------------------------
         <item>-knwa170-cod_empresa        = ls_objeto-knwa100-cod_empresa.
         <item>-knwa170-cod_filial         = ls_objeto-knwa100-cod_filial.
-        <item>-knwa170-nr_item          = ls_nfitem-nf-br_notafiscalitem.
+
+        "FIX 20260602 VVM - COD SEQUENCIAL
+        FIELD-SYMBOLS <counter> TYPE ty_counter.
+        READ TABLE lt_counters ASSIGNING <counter> WITH KEY br_notafiscal = p_nfdoc-doc-br_notafiscal.
+        IF sy-subrc <> 0.
+          INSERT VALUE #( br_notafiscal = p_nfdoc-doc-br_notafiscal
+                          counter       = 0 ) INTO TABLE lt_counters.
+          READ TABLE lt_counters ASSIGNING <counter> WITH KEY br_notafiscal = p_nfdoc-doc-br_notafiscal.
+        ENDIF.
+        <counter>-counter += 1.
+        <item>-knwa170-nr_item = CONV string( <counter>-counter ).
+        "<item>-knwa170-nr_item          = ls_nfitem-nf-br_notafiscalitem.
+        "FIX 20260602 VVM - COD SEQUENCIAL
+
         <item>-knwa170-nr_documento     = ls_objeto-knwa100-nr_documento.
         "<item>-knwa170-serie_subserie     = ls_objeto-knwa100-serie_subserie .
         <item>-knwa170-dt_emissao     = ls_objeto-knwa100-dt_emissao .
