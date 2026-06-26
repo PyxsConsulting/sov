@@ -255,11 +255,14 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_year_inventory.
       BEGIN OF ty_companycode,
         companycode     TYPE i_companycode-companycode,
         companycodename TYPE i_companycode-companycodename,
+        chartofaccounts TYPE i_companycode-chartofaccounts,
+
       END OF ty_companycode,
 
       BEGIN OF ty_accounts,
         product   TYPE i_journalentryitem-product,
         glaccount TYPE i_journalentryitem-glaccount,
+        postingdate TYPE i_journalentryitem-postingdate,
       END OF ty_accounts,
 
       ty_t_accounts TYPE TABLE OF ty_accounts WITH DEFAULT KEY,
@@ -709,8 +712,7 @@ CLASS lcl_process IMPLEMENTATION.
 
           lo_request->set_uri_path(
             EXPORTING
-*              i_uri_path = '/api/knw/v2/estoqueEscriturado'
-              i_uri_path = 'api/knw/v2/inventario'
+              i_uri_path = '/api/knw/v2/inventario'
 *              multivalue = 0
 *            RECEIVING
 *              r_value    =
@@ -1253,6 +1255,13 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knwh010-dm_sit_estoque  = 0.
       ls_objeto-knwh010-vl_total_ir     = ls_data-amountincompanycodecurrency. " ls_data-productvaluationbasic-standardprice.
 
+
+      "NUMERO DA CONTA 20260619
+      READ TABLE gt_accounts INTO DATA(ls_acc) WHERE product = ls_data-product.
+      IF sy-subrc = 0.
+        ls_objeto-knwh010-cd_plano_conta  = ls_acc-glaccount.
+      ENDIF.
+
       " ─── KNW0190 ───
 
       ls_objeto-knw0190-cod_empresa    = CONV i( s_branch_sov-sov_company ).
@@ -1447,6 +1456,7 @@ CLASS lcl_process IMPLEMENTATION.
           r_docnum  TYPE RANGE OF i_br_nfdocument-br_notafiscal,
           ls_anomes LIKE LINE OF lr_anomes.
 
+
     " Extract month and year from MMYYYY
     lv_month = sel-fiscalperiod+1(2).   " First 2 chars = MM
     lv_year  = sel-fiscalyear.    " Last 4 chars  = YYYY
@@ -1561,7 +1571,7 @@ CLASS lcl_process IMPLEMENTATION.
       group by stock~material
       INTO TABLE @gt_sel2.
 
-    SELECT SINGLE companycode, companycodename
+    SELECT SINGLE companycode, companycodename, chartofaccounts
       FROM i_companycode
      WHERE companycode = @sel-companycode
       INTO @gs_company.
@@ -1571,12 +1581,13 @@ CLASS lcl_process IMPLEMENTATION.
     ENDLOOP.
 
     IF lr_products IS NOT INITIAL.
-      SELECT DISTINCT product, glaccount FROM i_journalentryitem
-        WHERE ledger    = @sel-ledger
-        AND companycode = @sel-companycode
-        AND product     IN @lr_products
-        AND transactiontypedetermination = 'BSX'
-        INTO TABLE @gt_accounts.
+    SELECT product, glaccount, postingdate FROM i_journalentryitem
+      WHERE ledger    = '0L'
+      AND companycode = @sel-companycode
+      AND product IN @lr_products
+      AND transactiontypedetermination = 'BSX'
+      ORDER BY postingdate DESCENDING
+      INTO TABLE @gt_accounts.
     ENDIF.
 
 
