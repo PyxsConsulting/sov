@@ -9,7 +9,7 @@ LOOP AT gt_data INTO DATA(ls_data).
   CHECK sy-subrc = 0.
 
   IF ls_nfs-br_lc116servicecode IS INITIAL.
-    CLEAR gt_objects.
+    "CLEAR gt_objects.
     CONTINUE.
   ENDIF.
 
@@ -30,11 +30,12 @@ LOOP AT gt_data INTO DATA(ls_data).
   ENDIF.
 
   DATA(lv_root_id) =
-    |{ ls_nfs-br_nfpostingdate(6) }{ ls_nfs-br_nfpartner }|.
+    "|{ ls_nfs-br_nfpostingdate(6) }{ ls_nfs-br_nfpartner }|.
     "|{ ls_data-clearingdate(6) }{ ls_nfs-br_nfpartner }|.
+    |{ ls_nfs-br_nfpostingdate(6) }{ ls_nfs-br_nfpartner }N{ ls_nfs-br_nfsnumber }|.
 
   IF ls_irf_type-imposto = 'PCC'.
-    lv_root_id = |{ ls_data-clearingdate(6) }{ ls_nfs-br_nfpartner }{ ls_irf_type-Imposto }|.
+    lv_root_id = |{ lv_root_id }{ ls_irf_type-Imposto }|.
   ENDIF.
 
   READ TABLE gt_objects ASSIGNING FIELD-SYMBOL(<root>)
@@ -85,9 +86,9 @@ LOOP AT gt_data INTO DATA(ls_data).
 
   ENDIF.
 
-  DATA(lv_info_key) =
+  DATA(lv_info_key) = lv_pgto_key.
     "|{ lv_pgto_key }{ ls_data-accountingdocument }|.
-    |{ lv_pgto_key }{ ls_nfs-br_nfsnumber }|.
+    "|{ lv_pgto_key }{ ls_nfs-br_nfsnumber }|.
 
   READ TABLE <root>-knwReinfR4020InfoPgtoList
     ASSIGNING FIELD-SYMBOL(<info>)

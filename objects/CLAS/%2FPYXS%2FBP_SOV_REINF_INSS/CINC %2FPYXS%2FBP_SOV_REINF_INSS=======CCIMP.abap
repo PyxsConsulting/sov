@@ -34,6 +34,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_SOV_REINF_INSS.
         companycode TYPE i_companycode-companycode,
         plant       TYPE i_plant-plant,
         anomes      TYPE string,
+        document    TYPE i_br_nfdocument-br_notafiscal,
       END OF ty_sel,
 
       BEGIN OF ty_tax_item,
@@ -107,6 +108,8 @@ CLASS lcl_process DEFINITION FRIENDS lhc_SOV_REINF_INSS.
         br_nfpartnername1            TYPE i_br_nfdocument-br_nfpartnername1,
         br_lc116servicecode          TYPE i_br_nfitem-br_lc116servicecode,
         br_nftotalamount             TYPE i_br_nfdocument-br_nftotalamount,
+        BR_EFDREINFServiceCode       TYPE i_br_nfitem-BR_EFDREINFServiceCode,
+        material                     TYPE i_br_nfitem-Material,
       END OF ty_nf_data,
 
       ty_t_nf_data TYPE STANDARD TABLE OF ty_nf_data WITH NON-UNIQUE DEFAULT KEY,
@@ -191,6 +194,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_SOV_REINF_INSS.
       gt_objects    TYPE tt_r2010_objects,
       gt_nfs        TYPE ty_t_nf_data,
       mt_nature     TYPE TABLE OF /pyxs/sov_natren,
+      mt_cdreinf     TYPE TABLE OF /pyxs/sov_cdrein,
       mt_irf_types  TYPE TABLE OF /pyxs/sov_taxtype_irf,
       gt_root       TYPE ty_t_root_r2010.        " replaces ls_root / lt_root
 
@@ -266,6 +270,7 @@ CLASS lhc_sov_reinf_inss IMPLEMENTATION.
     lcl_process=>sel-companycode = key-%param-CompanyCode.
     lcl_process=>sel-plant       = key-%param-BusinessPlace.
     lcl_process=>sel-anomes      = key-%param-AnoMes.
+    lcl_process=>sel-document    = key-%param-BrNotafiscal.
 
     IF lcl_process=>sel-companycode IS INITIAL OR lcl_process=>sel-plant IS INITIAL.
       APPEND VALUE #( %action-sendintegration = if_abap_behv=>mk-on ) TO failed-/pyxs/sov_reinf_inss.
@@ -432,9 +437,10 @@ CLASS lcl_process IMPLEMENTATION.
 
     SELECT * FROM /pyxs/sov_taxtype_irf INTO TABLE @mt_irf_types.
     SELECT * FROM /pyxs/sov_natren       INTO TABLE @mt_nature.
+    SELECT * FROM /pyxs/sov_cdrein    INTO TABLE @mt_cdreinf.
 
     LOOP AT mt_irf_types INTO DATA(ls_irf_type).
-      CHECK ls_irf_type-imposto <> 'INSS'.
+      CHECK ls_irf_type-imposto = 'INSS'.
       APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_irf_type-categoriairf ) TO lr_irf_types.
     ENDLOOP.
 
@@ -463,6 +469,11 @@ CLASS lcl_process IMPLEMENTATION.
 
     CHECK gt_data IS NOT INITIAL.
 
+
+    IF sel-document IS NOT INITIAL.
+      APPEND VALUE #( sign = 'I' option = 'EQ' low = sel-document ) TO r_docnum.
+    ENDIF.
+
     SELECT nfi~br_notafiscal, nfi~br_notafiscalitem, nfi~br_nfsourcedocumenttype,
            nfi~br_nfsourcedocumentnumber,                              "#EC CI_NO_TRANSFORM
            nfi~br_nfsourcedocumentitem, nf~br_nftype, nf~br_nfdirection,
@@ -474,7 +485,9 @@ CLASS lcl_process IMPLEMENTATION.
            nft~br_taxtype, nft~br_nfitembaseamount, nft~br_nfitemtaxrate,
            nft~br_nfitemtaxamount, nft~br_nfitemwhldgcollectioncode, nft~taxgroup,
            nf~br_businessplacecnpj, nf~br_nfpartnercnpj, nf~br_nfpartnername1,
-           nfi~br_lc116servicecode, nf~br_nftotalamount
+           nfi~br_lc116servicecode, nf~br_nftotalamount,
+           nfi~BR_EFDREINFServiceCode,
+           nfi~material
       FROM i_br_nfitem AS nfi
       INNER JOIN i_br_nfdocument AS nf
         ON nf~br_notafiscal = nfi~br_notafiscal
@@ -484,6 +497,7 @@ CLASS lcl_process IMPLEMENTATION.
       FOR ALL ENTRIES IN @gt_data
       WHERE nfi~br_nfsourcedocumentnumber = @gt_data-originalreferencedocument
         AND nf~businessplace              = @sel-plant
+        AND nf~br_notafiscal             IN @r_docnum
       INTO TABLE @gt_nfs.
 
     SORT gt_data BY companycode accountingdocument fiscalyear accountingdocumentitem.
@@ -513,9 +527,9 @@ CLASS lcl_process IMPLEMENTATION.
 
     CHECK sy-subrc = 0.
 
-    IF ls_nfs-br_lc116servicecode IS INITIAL.
-      CONTINUE.
-    ENDIF.
+***    IF ls_nfs-br_lc116servicecode IS INITIAL.
+***      CONTINUE.
+***    ENDIF.
 
     DATA(lv_root_id) =
       |{ ls_data-clearingdate(6) }{ ls_nfs-br_nfpartner }{ ls_nfs-br_nfnumber }|.
@@ -529,7 +543,7 @@ CLASS lcl_process IMPLEMENTATION.
       <root>-knwReinfR2010-cd_filial           = gs_branch_sov-sov_branch.
       <root>-knwReinfR2010-id_referencia       = lv_root_id.
       <root>-knwReinfR2010-dm_retificacao      = '1'.
-      <root>-knwReinfR2010-dt_apuracao         = ls_data-clearingdate.
+      <root>-knwReinfR2010-dt_apuracao         = format_date_yyyymmdd( ls_data-clearingdate ).
       <root>-knwReinfR2010-dm_inscricao_obra   = '1'.
       <root>-knwReinfR2010-nr_inscricao_obra   = ls_nfs-br_businessplacecnpj.
       <root>-knwReinfR2010-dm_obra             = '0'.
@@ -544,12 +558,12 @@ CLASS lcl_process IMPLEMENTATION.
     ENDIF.
 
     " Accumulate totals on the root header
-    <root>-knwReinfR2010-vl_total_bruto +=
+    <root>-knwReinfR2010-vl_total_bruto =
       abs( ls_nfs-br_nftotalamount ).
-    <root>-knwReinfR2010-vl_total_base +=
+    <root>-knwReinfR2010-vl_total_base =
       abs( ls_data-whldgtaxbaseamtincocodecrcy ).
     <root>-knwReinfR2010-vl_total_retencao +=
-      abs( ls_data-whldgtaxbaseamtincocodecrcy ).
+      abs( ls_data-whldgtaxamtintransaccrcy ).
 
     READ TABLE gt_item_counter ASSIGNING FIELD-SYMBOL(<counter>)
       WITH TABLE KEY id_referencia = lv_root_id.
@@ -569,42 +583,61 @@ CLASS lcl_process IMPLEMENTATION.
       lv_nr_item_nota = 1.
     ENDIF.
 
-    APPEND INITIAL LINE TO
-      <root>-knwReinfR2010NotaList
-      ASSIGNING FIELD-SYMBOL(<nota>).
 
+    READ TABLE <root>-knwReinfR2010NotaList
+      ASSIGNING FIELD-SYMBOL(<nota>)
+      WITH KEY id_referencia = lv_root_id.
 
-    <nota>-cd_empresa     = gs_branch_sov-sov_company.
-    <nota>-cd_filial      = gs_branch_sov-sov_branch.
-    <nota>-id_referencia  = lv_root_id.
-    <nota>-nr_item_nota   = lv_nr_item_nota.
-    <nota>-nr_serie       = ls_nfs-br_nfseries.
-    <nota>-nr_documento   = ls_nfs-br_nfnumber.
-    <nota>-dt_emissao     = format_date_yyyymmdd( iv_date = ls_nfs-br_nfissuedate ).
-    <nota>-vl_bruto       = format_amount( iv_value = ls_nfs-br_nftotalamount ).
-    <nota>-ds_observacao  =
-      |Doc contábil { ls_data-accountingdocument }|.
-    IF <nota>-nr_serie IS INITIAL OR <nota>-nr_serie = ' '.
-      <nota>-nr_serie = '000'.
+    IF sy-subrc <> 0.
+        APPEND INITIAL LINE TO
+          <root>-knwReinfR2010NotaList
+          ASSIGNING <nota>.
+
+        <nota>-cd_empresa     = gs_branch_sov-sov_company.
+        <nota>-cd_filial      = gs_branch_sov-sov_branch.
+        <nota>-id_referencia  = lv_root_id.
+        <nota>-nr_item_nota   = lv_nr_item_nota.
+        <nota>-nr_serie       = ls_nfs-br_nfseries.
+        <nota>-nr_documento   = ls_nfs-br_nfnumber.
+        <nota>-dt_emissao     = format_date_yyyymmdd( iv_date = ls_nfs-br_nfissuedate ).
+        <nota>-vl_bruto       = format_amount( iv_value = ls_nfs-br_nftotalamount ).
+        <nota>-ds_observacao  = ''.
+          "|Doc contábil { ls_data-accountingdocument }|.
+        IF <nota>-nr_serie IS INITIAL OR <nota>-nr_serie = ' '.
+          <nota>-nr_serie = '000'.
+        ENDIF.
     ENDIF.
 
-    " Servico line — one per iteration, NR_ITEM_SERVICO always 1
-    APPEND INITIAL LINE TO
-      <root>-knwReinfR2010ServicoList
-      ASSIGNING FIELD-SYMBOL(<serv>).
+    READ TABLE <root>-knwReinfR2010ServicoList
+      ASSIGNING FIELD-SYMBOL(<serv>)
+      WITH KEY id_referencia = lv_root_id.
 
-    <serv>-cd_empresa        = gs_branch_sov-sov_company.
-    <serv>-cd_filial         = gs_branch_sov-sov_branch.
-    <serv>-id_referencia     = lv_root_id.
-    <serv>-nr_item_nota      = lv_nr_item_nota.
-    <serv>-nr_item_servico   = 1.
-    <serv>-cd_tipo_servico   = ls_nfs-br_lc116servicecode.
-    <serv>-vl_base_retencao  =
-      format_amount(
-        iv_value = abs( ls_data-whldgtaxbaseamtincocodecrcy ) ).
-    <serv>-vl_retencao       =
-      format_amount(
-        iv_value = abs( ls_data-whldgtaxamtintransaccrcy ) ).
+    IF sy-subrc <> 0.
+
+
+        APPEND INITIAL LINE TO
+          <root>-knwReinfR2010ServicoList
+          ASSIGNING <serv>.
+
+        <serv>-cd_empresa        = gs_branch_sov-sov_company.
+        <serv>-cd_filial         = gs_branch_sov-sov_branch.
+        <serv>-id_referencia     = lv_root_id.
+        <serv>-nr_item_nota      = lv_nr_item_nota.
+        <serv>-nr_item_servico   = 1.
+        <serv>-cd_tipo_servico   = ls_nfs-BR_EFDREINFServiceCode.
+        <serv>-vl_base_retencao  = '0'.
+        <serv>-vl_retencao       += '0'.
+
+        READ TABLE mt_cdreinf
+          INTO DATA(ls_cdreinf)
+          WITH KEY material = ls_nfs-material.
+        IF sy-subrc = '0'.
+          <serv>-cd_tipo_servico = ls_cdreinf-codreinf.
+        ENDIF.
+    ENDIF.
+
+    <serv>-vl_base_retencao =  abs( ls_data-whldgtaxbaseamtincocodecrcy ).
+    <serv>-vl_retencao      += abs( ls_data-whldgtaxamtintransaccrcy ).
 
   ENDLOOP.
 

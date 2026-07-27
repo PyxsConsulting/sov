@@ -4,7 +4,7 @@
   "data":
   [
    {
-    "TYPENAME":"/PYXS/BP_SOV_PLANO_CONTAS",
+    "TYPENAME":"/PYXS/BP_SOVOS_CODIGOREINF",
     "STATE":"A",
     "TYPEKIND":"CLAS"
    }
@@ -15,9 +15,9 @@
   "data":
   [
    {
-    "CLSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
+    "CLSNAME":"/PYXS/BP_SOVOS_CODIGOREINF",
     "CLSTYPE":0,
-    "UUID":"+hY+e3q1H9Gd+3QBtSZW2Q==",
+    "UUID":"+hY+e3q1H9Ghtwplx9mXEA==",
     "REMOTE":""
    }
   ]
@@ -27,14 +27,14 @@
   "data":
   [
    {
-    "CLSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
+    "CLSNAME":"/PYXS/BP_SOVOS_CODIGOREINF",
     "VERSION":1,
     "CATEGORY":6,
     "EXPOSURE":2,
     "STATE":1,
     "RELEASE":0,
     "AUTHOR":"",
-    "CREATEDON":"2026-07-04",
+    "CREATEDON":"2026-07-22",
     "CHANGEDBY":"",
     "CHANGEDON":"0000-00-00",
     "CHGDANYBY":"",
@@ -45,7 +45,7 @@
     "CLSCCINCL":"X",
     "CLSDEFATT":"",
     "CLSDEFMTD":"",
-    "REFCLSNAME":"/PYXS/SOV_PLANO_CONTAS",
+    "REFCLSNAME":"/PYXS/SOVOS_CODIGOREINF",
     "FIXPT":"X",
     "VARCL":"",
     "UNICODE":"5",
@@ -71,99 +71,9 @@
   "data":
   [
    {
-    "CLSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
+    "CLSNAME":"/PYXS/BP_SOVOS_CODIGOREINF",
     "LANGU":"P",
-    "DESCRIPT":"Behavior Implementation for /PYXS/SOV_PLANO_CONTAS"
-   }
-  ]
- },
- {
-  "table":"SEOCOMPO",
-  "data":
-  [
-   {
-    "CLSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
-    "CMPNAME":"LT_LOG",
-    "CMPTYPE":0,
-    "MTDTYPE":0,
-    "MTDTYPE2":0
-   }
-  ]
- },
- {
-  "table":"SEOCOMPODF",
-  "data":
-  [
-   {
-    "CLSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
-    "CMPNAME":"LT_LOG",
-    "VERSION":1,
-    "ALIAS":"",
-    "REDEFIN":"",
-    "EXPOSURE":2,
-    "STATE":1,
-    "EDITORDER":1,
-    "LOCKED":"",
-    "DISPID":0,
-    "R3RELEASE":"918",
-    "AUTHOR":"",
-    "CREATEDON":"2026-07-04",
-    "CHANGEDBY":"",
-    "CHANGEDON":"0000-00-00",
-    "MTDDECLTYP":0,
-    "MTDABSTRCT":"",
-    "MTDFINAL":"",
-    "DSRNOTEOM":"",
-    "EDTX":"",
-    "MTDNEWEXC":"",
-    "MTDREPLACE":"",
-    "MTDOPTNL":"",
-    "MTDSQLSERVICE":"",
-    "MTDAMDPRDONLY":"",
-    "MTDAMDPCDSCLNT":"",
-    "MTDAMDPCLNTINDEP":"",
-    "ATTDECLTYP":1,
-    "ATTDYNAMIC":"",
-    "ATTGETMTD":"",
-    "ATTSETMTD":"",
-    "ATTRDONLY":"",
-    "ATTVALUE":"",
-    "ATTPERSIST":"",
-    "ATTBUSOBJ":"",
-    "ATTKEYFLD":"",
-    "ATTEXPVIRT":0,
-    "EVTDECLTYP":0,
-    "TYPDUMMY":"",
-    "TYPTYPE":4,
-    "TYPE":"",
-    "TABLEOF":"",
-    "SRCROW1":2,
-    "SRCCOLUMN1":16,
-    "SRCROW2":2,
-    "SRCCOLUMN2":52,
-    "REFCLSNAME":"",
-    "REFINTNAME":"",
-    "REFCMPNAME":"",
-    "BCMTDINST":"",
-    "BCMTDCAT":0,
-    "BCMTDDIA":"",
-    "BCMTDCOM":"",
-    "BCMTDSYN":0,
-    "BCEVTCAT":0,
-    "TYPESRC_LENG":39,
-    "TYPESRC":"lt_log TYPE TABLE OF /pyxs/sov_placon\r\n"
-   }
-  ]
- },
- {
-  "table":"SEOCOMPOTX",
-  "data":
-  [
-   {
-    "CLSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
-    "CMPNAME":"LT_LOG",
-    "LANGU":"P",
-    "DESCRIPT":""
+    "DESCRIPT":"Behavior Implementation for /PYXS/SOVOS_CODIGOREINF"
    }
   ]
  },
@@ -174,7 +84,7 @@
    {
     "PGMID":"R3TR",
     "OBJECT":"CLAS",
-    "OBJ_NAME":"/PYXS/BP_SOV_PLANO_CONTAS",
+    "OBJ_NAME":"/PYXS/BP_SOVOS_CODIGOREINF",
     "KORRNUM":"",
     "SRCSYSTEM":"...",
     "AUTHOR":"SAP_CUSTOMER",
@@ -191,8 +101,8 @@
     "CRELEASE":"",
     "DELFLAG":"",
     "TRANSLTTXT":"",
-    "CREATED_ON":"2026-07-04",
-    "CHECK_DATE":"2026-07-04",
+    "CREATED_ON":"2026-07-22",
+    "CHECK_DATE":"2026-07-22",
     "CHECK_CFG":""
    }
   ]
@@ -202,7 +112,7 @@
   "data":
   [
    {
-    "CLASSNAME":"/PYXS/BP_SOV_PLANO_CONTAS",
+    "CLASSNAME":"/PYXS/BP_SOVOS_CODIGOREINF",
     "METHODINDX":0,
     "METHODNAME":" ",
     "FLAGS":0
@@ -214,7 +124,7 @@
   "data":
   [
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CCAU",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CCAU",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
@@ -225,7 +135,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CCDEF",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CCDEF",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
@@ -236,7 +146,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CCIMP",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CCIMP",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
@@ -247,7 +157,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CCMAC",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CCMAC",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
@@ -258,7 +168,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CI",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CI",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
@@ -269,7 +179,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CO",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CO",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
@@ -280,7 +190,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CP",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CP",
     "EDTX":"X",
     "VARCL":"X",
     "DBAPL":"S",
@@ -292,7 +202,7 @@
     "UCCHECK":"5"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CT",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CT",
     "DBAPL":"S",
     "DBNA":"D$",
     "SUBC":"I",
@@ -302,7 +212,7 @@
     "UCCHECK":"X"
    },
    {
-    "NAME":"/PYXS/BP_SOV_PLANO_CONTAS=====CU",
+    "NAME":"/PYXS/BP_SOVOS_CODIGOREINF====CU",
     "VARCL":"X",
     "DBAPL":"S",
     "DBNA":"D$",
