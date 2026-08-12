@@ -194,7 +194,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_SOV_REINF_INSS.
       gt_objects    TYPE tt_r2010_objects,
       gt_nfs        TYPE ty_t_nf_data,
       mt_nature     TYPE TABLE OF /pyxs/sov_natren,
-      mt_cdreinf     TYPE TABLE OF /pyxs/sov_cdrein,
+      mt_cdreinf     TYPE TABLE OF /pyxs/sov_cdrei2,
       mt_irf_types  TYPE TABLE OF /pyxs/sov_taxtype_irf,
       gt_root       TYPE ty_t_root_r2010.        " replaces ls_root / lt_root
 
@@ -437,7 +437,7 @@ CLASS lcl_process IMPLEMENTATION.
 
     SELECT * FROM /pyxs/sov_taxtype_irf INTO TABLE @mt_irf_types.
     SELECT * FROM /pyxs/sov_natren       INTO TABLE @mt_nature.
-    SELECT * FROM /pyxs/sov_cdrein    INTO TABLE @mt_cdreinf.
+    SELECT * FROM /pyxs/sov_cdrei2    INTO TABLE @mt_cdreinf.
 
     LOOP AT mt_irf_types INTO DATA(ls_irf_type).
       CHECK ls_irf_type-imposto = 'INSS'.
@@ -498,6 +498,9 @@ CLASS lcl_process IMPLEMENTATION.
       WHERE nfi~br_nfsourcedocumentnumber = @gt_data-originalreferencedocument
         AND nf~businessplace              = @sel-plant
         AND nf~br_notafiscal             IN @r_docnum
+        "não pegar estornos e notas canceladas
+        and nf~BR_NFIsCanceled NE 'X'
+        and nf~br_nftype NE 'A1'
       INTO TABLE @gt_nfs.
 
     SORT gt_data BY companycode accountingdocument fiscalyear accountingdocumentitem.
@@ -599,7 +602,7 @@ CLASS lcl_process IMPLEMENTATION.
         <nota>-nr_item_nota   = lv_nr_item_nota.
         <nota>-nr_serie       = ls_nfs-br_nfseries.
         <nota>-nr_documento   = ls_nfs-br_nfnumber.
-        <nota>-dt_emissao     = format_date_yyyymmdd( iv_date = ls_nfs-br_nfissuedate ).
+        <nota>-dt_emissao     = format_date_yyyymmdd( iv_date = ls_data-clearingdate ).
         <nota>-vl_bruto       = format_amount( iv_value = ls_nfs-br_nftotalamount ).
         <nota>-ds_observacao  = ''.
           "|Doc contábil { ls_data-accountingdocument }|.
