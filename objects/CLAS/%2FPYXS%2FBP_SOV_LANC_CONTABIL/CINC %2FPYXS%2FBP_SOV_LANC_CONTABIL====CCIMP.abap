@@ -359,10 +359,11 @@ CLASS lcl_process IMPLEMENTATION.
       " VL_LANCAMENTO final do cabeçalho (soma só dos créditos)
       ls_out-knw_sctb_i200-vl_lancamento = lv_vl_lancto.
 
+
       APPEND ls_out TO ls_out_obj-objetos.
+      APPEND ls_out_obj TO gt_out.
 
     ENDLOOP.
-    APPEND ls_out_obj TO gt_out.
 
     ENDMETHOD.
 
@@ -383,7 +384,7 @@ CLASS lcl_process IMPLEMENTATION.
           assoc_arrays_opt = abap_false
       ).
 
-      json_out = /pyxs/sov_json_conversion=>convert_sovos( json_out ).
+      json_out = /pyxs/sov_json_conversion=>convert_contabil( json_out ).
       DATA: lr_cscn TYPE if_com_scenario_factory=>ty_query-cscn_id_range.
 
       " find CA by scenario

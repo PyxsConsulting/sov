@@ -2625,8 +2625,10 @@ CLASS lcl_process IMPLEMENTATION.
 
         <item>-knwc170-vl_total_item    = ls_nfitem-nf-br_nfvalueamountwithtaxes. "ls_nfitem-nf-netpriceamount * ls_nfitem-nf-quantityinbaseunit.
         <item>-knwc170-vl_desc_item     = ls_nfitem-nf-br_nfdiscountamountwithtaxes.
-        <item>-knwc170-vl_contabil      = ls_nfitem-nf-br_nfvalueamountwithtaxes + ls_objeto-knwc100-vl_frete + ls_objeto-knwc100-vl_seguro + ls_objeto-knwc100-vl_outras_desp - ls_objeto-knwc100-vl_desconto
-                                        + ls_nfitem-nf-br_nfexemptedicmswithtaxes + ls_nfitem-nf-br_pissttaxamount + ls_nfitem-nf-br_cofinssttaxamount.
+        "<item>-knwc170-vl_contabil      = ls_nfitem-nf-br_nfvalueamountwithtaxes + ls_objeto-knwc100-vl_frete + ls_objeto-knwc100-vl_seguro + ls_objeto-knwc100-vl_outras_desp - ls_objeto-knwc100-vl_desconto
+                                        "+ ls_nfitem-nf-br_nfexemptedicmswithtaxes + ls_nfitem-nf-br_pissttaxamount + ls_nfitem-nf-br_cofinssttaxamount.
+        <item>-knwc170-vl_contabil      = ls_nfitem-nf-br_nfvalueamountwithtaxes + ls_nfitem-nf-br_nffreightamountwithtaxes + ls_nfitem-nf-br_nfinsuranceamountwithtaxes + ls_nfitem-nf-br_nfexpensesamountwithtaxes
+                                        - abs( ls_nfitem-nf-br_nfdiscountamountwithtaxes ) + ls_nfitem-nf-br_nfexemptedicmswithtaxes + ls_nfitem-nf-br_pissttaxamount + ls_nfitem-nf-br_cofinssttaxamount.
 
         IF ls_nfitem-nf-br_materialorigin IS NOT INITIAL.
           <item>-knwc170-cd_sit_trib_icms   = ls_nfitem-nf-br_materialorigin && ls_nfitem-nf-br_icmstaxsituation.
@@ -2890,6 +2892,7 @@ CLASS lcl_process IMPLEMENTATION.
           <item>-knw0200-dt_inicial         = '1900-01-01T00:00:00-03:00'.
           "<item>-knw0200-dm_tipo_item       = '09'.
           <item>-knw0200-cd_ncm             = normalize( p_str = ls_nfitem-nf-ncmcode ).
+          <item>-knw0200-cd_genero            = <item>-knw0200-cd_ncm(2).
           <item>-knw0200-dm_origem_produto  = ls_nfitem-nf-br_materialorigin.
           <item>-knw0200-nr_cest            = ls_nfitem-nf-br_icmsstlegalclassfctn.
           CASE ls_nfitem-referenceproducttype.
