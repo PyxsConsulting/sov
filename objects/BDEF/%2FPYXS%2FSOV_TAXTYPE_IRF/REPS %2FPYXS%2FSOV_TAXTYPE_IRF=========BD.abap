@@ -21,12 +21,13 @@ authorization master ( instance )
   draft determine action Prepare
   {}
 
-  field ( readonly : update ) CategoriaIrf;
+  field ( readonly : update ) CategoriaIrf, Imposto;
 
   mapping for /pyxs/sov_taxtyp
     {
       CategoriaIrf = categoriairf;
       Imposto = imposto;
+      Usardatapagto = usardatapagto;
     }
 
   validation validateCategoria on save { create; field CategoriaIrf; }
