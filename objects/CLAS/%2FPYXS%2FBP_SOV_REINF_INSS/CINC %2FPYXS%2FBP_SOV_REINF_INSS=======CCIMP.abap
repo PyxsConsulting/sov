@@ -82,6 +82,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_SOV_REINF_INSS.
         br_nftype                    TYPE i_br_nfdocument-br_nftype,
         br_nfdirection               TYPE i_br_nfdocument-br_nfdirection,
         br_nfpostingdate               TYPE i_br_nfdocument-br_nfpostingdate,
+        br_nfissuedate               TYPE i_br_nfdocument-BR_NFIssueDate,
         br_nfmodel                   TYPE i_br_nfdocument-br_nfmodel,
         br_nfseries                  TYPE i_br_nfdocument-br_nfseries,
         br_nfsubseries               TYPE i_br_nfdocument-br_nfsubseries,
@@ -184,19 +185,20 @@ CLASS lcl_process DEFINITION FRIENDS lhc_SOV_REINF_INSS.
       END OF ty_companycode.
 
     CLASS-DATA:
-      sel           TYPE ty_sel,
-      data_sys      TYPE d,
-      hora_sys      TYPE t,
-      gv_proc       TYPE string,
-      gs_company    TYPE ty_companycode,
-      gs_branch_sov TYPE /pyxs/sov_branch,
-      gt_data       TYPE ty_t_wit_data,
-      gt_objects    TYPE tt_r2010_objects,
-      gt_nfs        TYPE ty_t_nf_data,
-      mt_nature     TYPE TABLE OF /pyxs/sov_natren,
+      sel            TYPE ty_sel,
+      data_sys       TYPE d,
+      hora_sys       TYPE t,
+      gv_proc        TYPE string,
+      gs_company     TYPE ty_companycode,
+      gs_branch_sov  TYPE /pyxs/sov_branch,
+      gs_branch_main TYPE i_addlcompanycodeinformation,
+      gt_data        TYPE ty_t_wit_data,
+      gt_objects     TYPE tt_r2010_objects,
+      gt_nfs         TYPE ty_t_nf_data,
+      mt_nature      TYPE TABLE OF /pyxs/sov_natren,
       mt_cdreinf     TYPE TABLE OF /pyxs/sov_cdrei2,
-      mt_irf_types  TYPE TABLE OF /pyxs/sov_taxtype_irf,
-      gt_root       TYPE ty_t_root_r2010.        " replaces ls_root / lt_root
+      mt_irf_types   TYPE TABLE OF /pyxs/sov_taxtype_irf,
+      gt_root        TYPE ty_t_root_r2010.        " replaces ls_root / lt_root
 
   PRIVATE SECTION.
     CLASS-METHODS:
@@ -404,11 +406,19 @@ CLASS lcl_process IMPLEMENTATION.
          originalreferencedocument TYPE i_journalentry-originalreferencedocument,
        END OF ty_oreftab.
 
+
+    SELECT single *
+      FROM i_addlcompanycodeinformation WITH PRIVILEGED ACCESS
+      WHERE companycode = @sel-companycode
+        AND companycodeparametertype = 'J_1BBR'
+        INTO @gs_branch_main.
+
     SELECT SINGLE *
       FROM /pyxs/sov_branch
       WHERE company_code = @sel-companycode
-        AND branch       = @sel-plant
+        AND branch       = @gs_branch_main-CompanyCodeParameterValue
       INTO @gs_branch_sov.
+
 
     DATA: lr_irf_types  TYPE RANGE OF i_withholdingtaxitem-withholdingtaxtype,
           lr_daterange  TYPE RANGE OF i_journalentryitem-clearingdate.
@@ -442,9 +452,11 @@ CLASS lcl_process IMPLEMENTATION.
 
     APPEND VALUE #( sign = 'I' option = 'BT' low = lv_date_f high = lv_date_t ) TO lr_daterange.
 
+
     SELECT * FROM /pyxs/sov_taxtype_irf INTO TABLE @mt_irf_types.
     SELECT * FROM /pyxs/sov_natren       INTO TABLE @mt_nature.
     SELECT * FROM /pyxs/sov_cdrei2    INTO TABLE @mt_cdreinf.
+
 
     LOOP AT mt_irf_types INTO DATA(ls_irf_type).
       CHECK ls_irf_type-imposto = 'INSS'.
@@ -453,7 +465,7 @@ CLASS lcl_process IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    CHECK lr_irf_types IS NOT INITIAL.
+    IF lr_irf_types IS NOT INITIAL.
 
     SELECT wit~companycode, wit~accountingdocument, wit~fiscalyear, wit~accountingdocumentitem,
            wit~withholdingtaxtype, wit~withholdingtaxcode, wit~whldgtaxbaseamtincocodecrcy,
@@ -476,8 +488,7 @@ CLASS lcl_process IMPLEMENTATION.
         AND wit~withholdingtaxtype IN @lr_irf_types
       INTO TABLE @gt_data.
 
-    CHECK gt_data IS NOT INITIAL.
-
+    IF gt_data IS NOT INITIAL.
 
     IF sel-document IS NOT INITIAL.
       APPEND VALUE #( sign = 'I' option = 'EQ' low = sel-document ) TO r_docnum.
@@ -486,7 +497,7 @@ CLASS lcl_process IMPLEMENTATION.
     SELECT nfi~br_notafiscal, nfi~br_notafiscalitem, nfi~br_nfsourcedocumenttype,
            nfi~br_nfsourcedocumentnumber,                              "#EC CI_NO_TRANSFORM
            nfi~br_nfsourcedocumentitem, nf~br_nftype, nf~br_nfdirection,
-           nf~br_nfpostingdate, nf~br_nfmodel, nf~br_nfseries, nf~br_nfsubseries,
+           nf~br_nfpostingdate, nf~br_nfissuedate, nf~br_nfmodel, nf~br_nfseries, nf~br_nfsubseries,
            nf~br_nfnumber, nf~businessplace, nf~br_nfpartnerfunction,
            nf~br_nfpartner, nf~br_nfpartnertype, nf~br_nfiscanceled,
            nf~br_nfsnumber, nf~br_isnfe, nf~br_nfenumber, nf~br_nfhasserviceitem,
@@ -505,12 +516,15 @@ CLASS lcl_process IMPLEMENTATION.
        AND nfi~br_notafiscalitem  = nft~br_notafiscalitem
       FOR ALL ENTRIES IN @gt_data
       WHERE nfi~br_nfsourcedocumentnumber = @gt_data-originalreferencedocument
-        AND nf~businessplace              = @sel-plant
+        "AND nf~businessplace              = @sel-plant
         AND nf~br_notafiscal             IN @r_docnum
         "não pegar estornos e notas canceladas
         and nf~BR_NFIsCanceled NE 'X'
         and nf~br_nftype NE 'A1'
       INTO TABLE @gt_nfs.
+
+    ENDIF.
+    ENDIF.
 
 
     CLEAR lr_irf_types.
@@ -526,7 +540,7 @@ CLASS lcl_process IMPLEMENTATION.
         SELECT nfi~br_notafiscal, nfi~br_notafiscalitem, nfi~br_nfsourcedocumenttype,
            nfi~br_nfsourcedocumentnumber,                              "#EC CI_NO_TRANSFORM
            nfi~br_nfsourcedocumentitem, nf~br_nftype, nf~br_nfdirection,
-           nf~br_nfpostingdate, nf~br_nfmodel, nf~br_nfseries, nf~br_nfsubseries,
+           nf~br_nfpostingdate, nf~br_nfissuedate, nf~br_nfmodel, nf~br_nfseries, nf~br_nfsubseries,
            nf~br_nfnumber, nf~businessplace, nf~br_nfpartnerfunction,
            nf~br_nfpartner, nf~br_nfpartnertype, nf~br_nfiscanceled,
            nf~br_nfsnumber, nf~br_isnfe, nf~br_nfenumber, nf~br_nfhasserviceitem,
@@ -545,7 +559,7 @@ CLASS lcl_process IMPLEMENTATION.
                 AND nfi~br_notafiscalitem = nft~br_notafiscalitem
              WHERE nf~br_nfpostingdate IN @lr_daterange
                "AND nfi~br_nfsourcedocumentnumber  = @lt_data_it-originalreferencedocument
-               AND nf~businessplace               = @sel-plant
+               "AND nf~businessplace               = @sel-plant
                AND nf~br_notafiscal               IN @r_docnum
                "AND nft~br_nfitemhaswithholdingtax = 'X'
                "não pegar estornos e notas canceladas
@@ -558,6 +572,8 @@ CLASS lcl_process IMPLEMENTATION.
                       originalreferencedocument = ls_nfs_aux-br_nfsourcedocumentnumber )
                INTO TABLE lt_oreftab.
            ENDLOOP.
+
+         IF lt_oreftab IS NOT INITIAL.
 
           SELECT wit~companycode, wit~accountingdocument, wit~fiscalyear, wit~accountingdocumentitem,
            wit~withholdingtaxtype, wit~withholdingtaxcode, wit~whldgtaxbaseamtincocodecrcy,
@@ -581,6 +597,7 @@ CLASS lcl_process IMPLEMENTATION.
              AND joi~ledger      = '0L'
              AND wit~withholdingtaxtype IN @lr_irf_types
            APPENDING TABLE @gt_data.
+         ENDIF.
 
 
     ENDIF.
@@ -622,10 +639,10 @@ CLASS lcl_process IMPLEMENTATION.
     INTO DATA(ls_irf_type).
 
     DATA(lv_root_id) =
-      |{ ls_nfs-br_nfpostingdate(6) }{ ls_nfs-br_nfpartner }{ ls_nfs-br_nfnumber }|.
+      |R2010{ ls_nfs-br_nfissuedate(6) }{ ls_nfs-br_nfpartner }{ ls_nfs-br_nfnumber }|.
 
     IF ls_irf_type-Usardatapagto = abap_true.
-      lv_root_id = |{ ls_data-clearingdate(6) }{ ls_nfs-br_nfpartner }{ ls_nfs-br_nfnumber }|.
+      lv_root_id = |R2010{ ls_data-clearingdate(6) }{ ls_nfs-br_nfpartner }{ ls_nfs-br_nfnumber }|.
     ENDIF.
 
     READ TABLE gt_objects ASSIGNING FIELD-SYMBOL(<root>)
@@ -635,9 +652,11 @@ CLASS lcl_process IMPLEMENTATION.
       APPEND INITIAL LINE TO gt_objects ASSIGNING <root>.
       <root>-knwReinfR2010-cd_empresa          = gs_branch_sov-sov_company.
       <root>-knwReinfR2010-cd_filial           = gs_branch_sov-sov_branch.
+      "<root>-knwReinfR2010-cd_empresa          = gs_branch_main-CompanyCode.
+      "<root>-knwReinfR2010-cd_filial           = gs_branch_main-CompanyCodeParameterValue.
       <root>-knwReinfR2010-id_referencia       = lv_root_id.
       <root>-knwReinfR2010-dm_retificacao      = '1'.
-      <root>-knwReinfR2010-dt_apuracao         = format_date_yyyymmdd( ls_nfs-br_nfpostingdate ).
+      <root>-knwReinfR2010-dt_apuracao         = format_date_yyyymmdd( ls_nfs-br_nfissuedate ).
       IF ls_irf_type-Usardatapagto = abap_true.
         <root>-knwReinfR2010-dt_apuracao         = format_date_yyyymmdd( ls_data-clearingdate ).
       ENDIF.
@@ -692,11 +711,13 @@ CLASS lcl_process IMPLEMENTATION.
 
         <nota>-cd_empresa     = gs_branch_sov-sov_company.
         <nota>-cd_filial      = gs_branch_sov-sov_branch.
+        "<nota>-cd_empresa          = gs_branch_main-CompanyCode.
+        "<nota>-cd_filial            = gs_branch_main-CompanyCodeParameterValue.
         <nota>-id_referencia  = lv_root_id.
         <nota>-nr_item_nota   = lv_nr_item_nota.
         <nota>-nr_serie       = ls_nfs-br_nfseries.
         <nota>-nr_documento   = ls_nfs-br_nfnumber.
-        <nota>-dt_emissao     = format_date_yyyymmdd( iv_date = ls_nfs-br_nfpostingdate ).
+        <nota>-dt_emissao     = format_date_yyyymmdd( iv_date = ls_nfs-br_nfissuedate ).
         IF ls_irf_type-Usardatapagto = abap_true.
           <root>-knwReinfR2010-dt_apuracao         = format_date_yyyymmdd( ls_data-clearingdate ).
         ENDIF.
@@ -721,6 +742,8 @@ CLASS lcl_process IMPLEMENTATION.
 
         <serv>-cd_empresa        = gs_branch_sov-sov_company.
         <serv>-cd_filial         = gs_branch_sov-sov_branch.
+        "<serv>-cd_empresa             = gs_branch_main-CompanyCode.
+        "<serv>-cd_filial           = gs_branch_main-CompanyCodeParameterValue.
         <serv>-id_referencia     = lv_root_id.
         <serv>-nr_item_nota      = lv_nr_item_nota.
         <serv>-nr_item_servico   = 1.
@@ -963,36 +986,40 @@ ENDMETHOD.
         IF sy-subrc <> 0.
         ENDIF.
     ENDTRY.
-    GET TIME STAMP FIELD time.
+      GET TIME STAMP FIELD time.
 
-***    IF lo_ret IS INITIAL.
-***      APPEND INITIAL LINE TO /pyxs/bp_reinflog=>lt_log ASSIGNING <log>.
-***      <log>-time = time.
-***      READ TABLE ls_root-knwReinfR4020 INTO DATA(ls_nf) INDEX 1.
-***
-***      <log>-ano_mes = me->sel-creation[ 1 ]-low.
-***      <log>-evento = '4000'.
-***      <log>-partner = ls_nf-id_referencia+6.
-***      <log>-resultado = COND #( WHEN lv_ret IS INITIAL THEN '999' ELSE lv_ret-code ).
-***      <log>-retorno = COND #( WHEN gv_proc IS NOT INITIAL THEN gv_proc
-***                              WHEN lv_ret IS NOT INITIAL THEN lv_ret-reason
-***                              ELSE 'Erro no serviço' ).
-***
-***    ELSE.
-***
-***      LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
-***        APPEND INITIAL LINE TO /pyxs/bp_reinflog=>lt_log ASSIGNING <log>.
-***        <log>-id = sy-tabix.
-***        <log>-time = time.
-***        READ TABLE ls_root-knwReinfR4020 INTO ls_nf INDEX 1.
-***
-***        <log>-ano_mes = me->sel-creation[ 1 ]-low.
-***        <log>-evento = '4000'.
-***        <log>-partner = ls_nf-id_referencia+6.
-***        <log>-resultado = lv_ret-code.
-***        <log>-retorno = lv_ret-reason.
-***      ENDLOOP.
-***    ENDIF.
+    "IF lo_ret IS INITIAL.
+      "APPEND INITIAL LINE TO /pyxs/bp_reinflog=>lt_log ASSIGNING <log>.
+      "<log>-time = time.
+      "READ TABLE ls_root-knwReinfR2010NotaList INTO DATA(ls_nf) INDEX 1.
+
+      "<log>-ano_mes   = sel-anomes.
+      "<log>-evento    = '4000'.
+      "<log>-partner   = ls_nf-id_referencia+6.
+      "<log>-resultado = COND #( WHEN lv_ret IS INITIAL THEN '999' ELSE lv_ret-code ).
+      "<log>-retorno   = COND #( WHEN gv_proc IS NOT INITIAL THEN gv_proc
+       "                         WHEN lv_ret IS NOT INITIAL THEN lv_ret-reason
+        "                       ELSE 'Erro no serviço' ).
+
+    "ELSE.
+
+      "LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
+        "APPEND INITIAL LINE TO /pyxs/bp_reinflog=>lt_log ASSIGNING <log>.
+         "<log>-id        = sy-tabix.
+         "<log>-time      = time.
+         "READ TABLE ls_root-knwReinfR2010NotaList INTO ls_nf INDEX 1.
+
+        "<log>-ano_mes   = sel-anomes.
+        "<log>-evento    = '4000'.
+        "<log>-partner   = ls_nf-id_referencia+6.
+        "<log>-resultado = lv_ret-code.
+        "<log>-retorno   = COND #( WHEN gv_proc IS NOT INITIAL THEN gv_proc
+        "                         WHEN lv_ret IS NOT INITIAL THEN lv_ret-reason
+        "                         ELSE 'Erro no serviço' ).
+      "ENDLOOP.
+    "ENDIF.
+
+
   ENDLOOP.
   ENDMETHOD.
 
