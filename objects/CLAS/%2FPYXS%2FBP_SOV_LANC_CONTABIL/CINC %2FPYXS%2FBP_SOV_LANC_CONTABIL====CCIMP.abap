@@ -71,13 +71,16 @@ TYPES: BEGIN OF ty_knw0500,
          cd_plano_conta   TYPE string,
        END OF ty_knw0500.
 
-
 TYPES: BEGIN OF ty_data,
-        hdr TYPE i_journalentry,
-        itm TYPE i_journalentryitem,
-        cpn TYPE i_companycode,
-        glaccountname        TYPE i_glaccounttextincompanycode-glaccountname,
-      END OF ty_data.
+         accountingdocument           TYPE i_journalentryitem-accountingdocument,
+         postingdate                  TYPE i_journalentryitem-postingdate,
+         debitcreditcode              TYPE i_journalentryitem-debitcreditcode,
+         amountincompanycodecurrency  TYPE i_journalentryitem-amountincompanycodecurrency,
+         glrecordtype                 TYPE i_journalentryitem-glrecordtype,
+         ledgergllineitem             TYPE i_journalentryitem-ledgergllineitem,
+         glaccount                    TYPE i_journalentryitem-glaccount,
+         glaccountname                TYPE i_glaccounttextincompanycode-glaccountname,
+       END OF ty_data.
 
 TYPES: BEGIN OF ty_knw_sctb_i250_list,
          knw0500     TYPE ty_knw0500,
@@ -102,13 +105,15 @@ TYPES:
           businessplace TYPE i_br_businessplace,
           sel           TYPE ty_sel,
           t_data        TYPE TABLE OF ty_data,
+          gt_params     TYPE TABLE OF /pyxs/sov_params,
           gv_proc       TYPE string.
 
   PRIVATE SECTION.
     CLASS-METHODS:
       read_db,
       build_objects,
-      send_integration.
+      send_integration,
+      cleanup.
 
 ENDCLASS.
 
@@ -156,9 +161,22 @@ CLASS lhc_SOV_LANC_CONTABIL IMPLEMENTATION.
 
     CHECK failed-/pyxs/sov_lanc_contabil IS INITIAL.
 
-    lcl_process=>read_db( ).
-    lcl_process=>build_objects( ).
-    lcl_process=>send_integration( ).
+    DATA(lv_day) = key-%param-postingstartdate.
+
+    WHILE lv_day <= key-%param-postingenddate.
+
+      lcl_process=>cleanup( ).
+
+      lcl_process=>sel-postingstartdate = lv_day.
+      lcl_process=>sel-postingenddate   = lv_day.
+
+      lcl_process=>read_db( ).
+      lcl_process=>build_objects( ).
+      lcl_process=>send_integration( ).
+
+      lv_day = lv_day + 1.
+
+    ENDWHILE.
 
     APPEND INITIAL LINE TO reported-/pyxs/sov_lanc_contabil ASSIGNING FIELD-SYMBOL(<fs>).
     <fs>-%cid = key-%cid.
@@ -250,9 +268,14 @@ CLASS lcl_process IMPLEMENTATION.
           low    = sel-ledger ) ).
     ENDIF.
 
-
-    SELECT hdr~*, itm~*, cpn~*,
-    i_glaccount~\_text[ language = 'P' ]-glaccountname
+    SELECT itm~accountingdocument,
+           itm~postingdate,
+           itm~debitcreditcode,
+           itm~amountincompanycodecurrency,
+           itm~glrecordtype,
+           itm~ledgergllineitem,
+           itm~glaccount,
+           i_glaccount~\_text[ language = 'P' ]-glaccountname AS glaccountname
       FROM i_journalentry WITH PRIVILEGED ACCESS AS hdr
       INNER JOIN i_journalentryitem WITH PRIVILEGED ACCESS AS itm
           ON hdr~companycode = itm~companycode
@@ -267,12 +290,8 @@ CLASS lcl_process IMPLEMENTATION.
         AND hdr~postingdate IN @lr_postingdates
         AND hdr~accountingdocument IN @lr_accountingdocument
         AND hdr~fiscalyear = @sel-fiscalyear
-        "AND hdr~accountingdocumenttype = @sel-
         AND hdr~accountingdocumentcategory NOT IN ('D','S','V','W','Z','M')
-        "AND itm~glaccount = @sel-
-        AND itm~sourceledger IN @lr_ledger
-*        AND hdr~Branch = @sel-branch
-*        AND hdr~AccountingDocumentCategory IN @open
+        AND itm~ledger IN @lr_ledger
         INTO TABLE @t_data.
 
     SELECT SINGLE *
@@ -280,6 +299,8 @@ CLASS lcl_process IMPLEMENTATION.
     WHERE company_code = @sel-companycode
       AND branch = @sel-branch
       INTO @s_branch_sov.
+
+    SELECT * FROM /pyxs/sov_params INTO TABLE @gt_params.
 
     ENDMETHOD.
 
@@ -291,14 +312,15 @@ CLASS lcl_process IMPLEMENTATION.
     DATA:
           lt_journalkeys TYPE STANDARD TABLE OF i_journalentryitem-accountingdocument,
           lv_key         TYPE i_journalentryitem-accountingdocument,
-          lv_vl_lancto   TYPE p DECIMALS 2.
+          lv_vl_lancto   TYPE p DECIMALS 2,
+          lv_count       TYPE i.
 
     FIELD-SYMBOLS: <ls_i250_list> TYPE ty_knw_sctb_i250_list.
 
-    CLEAR: gt_out, ls_out_obj.
+    CLEAR: gt_out, ls_out_obj, lv_count.
 
     " 1) monta lista de AccountingDocument únicos
-    lt_journalkeys = VALUE #( FOR line IN t_data ( line-itm-accountingdocument ) ).
+    lt_journalkeys = VALUE #( FOR line IN t_data ( line-accountingdocument ) ).
 
     SORT lt_journalkeys.
     DELETE ADJACENT DUPLICATES FROM lt_journalkeys.
@@ -307,17 +329,18 @@ CLASS lcl_process IMPLEMENTATION.
 
       CLEAR: ls_out, lv_vl_lancto.
 
-      LOOP AT t_data INTO DATA(ls_data) WHERE itm-accountingdocument = lv_key.
+      LOOP AT t_data INTO DATA(ls_data) WHERE accountingdocument = lv_key.
 
         " ---- knwSctbI200 (cabeçalho) ----
-        ls_out-knw_sctb_i200-nr_lancamento    = ls_data-itm-accountingdocument.
-        ls_out-knw_sctb_i200-dt_lancamento    = ls_data-itm-postingdate.
+        ls_out-knw_sctb_i200-nr_lancamento    = ls_data-accountingdocument.
+        ls_out-knw_sctb_i200-dt_lancamento    = |{ ls_data-postingdate(4) }-{ ls_data-postingdate+4(2) }-{ ls_data-postingdate+6 }T00:00:00-03:00|.
+        "ls_out-knw_sctb_i200-dt_lancamento    = ls_data-postingdate.
 
-        IF ls_data-itm-debitcreditcode = 'H'.
-          lv_vl_lancto += abs( ls_data-itm-amountincompanycodecurrency ).
+        IF ls_data-debitcreditcode = 'H'.
+          lv_vl_lancto += abs( ls_data-amountincompanycodecurrency ).
         ENDIF.
 
-        IF ls_data-itm-glrecordtype = '5'.
+        IF ls_data-glrecordtype = '5'.
           ls_out-knw_sctb_i200-dm_lancamento = 'E'.
         ELSE.
           ls_out-knw_sctb_i200-dm_lancamento = 'N'.
@@ -336,15 +359,21 @@ CLASS lcl_process IMPLEMENTATION.
         <ls_i250_list>-knw0500-ds_plano_conta  = ls_data-glaccountname.
         <ls_i250_list>-knw0500-cod_empresa     = s_branch_sov-sov_company.
         <ls_i250_list>-knw0500-cod_filial      = s_branch_sov-sov_branch.
-        <ls_i250_list>-knw0500-cd_plano_conta  = ls_data-itm-glaccount.
+        <ls_i250_list>-knw0500-cd_plano_conta  = ls_data-glaccount.
+
+        READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                             active = abap_true.
+        IF sy-subrc IS INITIAL.
+          SHIFT <ls_i250_list>-knw0500-cd_plano_conta LEFT DELETING LEADING '0'.
+        ENDIF.
 
         " knwSctbI250
-        <ls_i250_list>-knw_sctb_i250-nr_lancamento    = ls_data-itm-accountingdocument.
-        <ls_i250_list>-knw_sctb_i250-vl_lancamento    = abs( ls_data-itm-amountincompanycodecurrency ).
+        <ls_i250_list>-knw_sctb_i250-nr_lancamento    = ls_data-accountingdocument.
+        <ls_i250_list>-knw_sctb_i250-vl_lancamento    = abs( ls_data-amountincompanycodecurrency ).
         <ls_i250_list>-knw_sctb_i250-vl_lancamento_mf = 0.
-        <ls_i250_list>-knw_sctb_i250-ds_historico     = |Sequência: { ls_data-itm-ledgergllineitem }|.
+        <ls_i250_list>-knw_sctb_i250-ds_historico     = |Sequência: { ls_data-ledgergllineitem }|.
 
-        IF ls_data-itm-debitcreditcode = 'H'.
+        IF ls_data-debitcreditcode = 'H'.
           <ls_i250_list>-knw_sctb_i250-dm_debito_credito = 'C'.
         ELSE.
           <ls_i250_list>-knw_sctb_i250-dm_debito_credito = 'D'.
@@ -352,18 +381,34 @@ CLASS lcl_process IMPLEMENTATION.
 
         <ls_i250_list>-knw_sctb_i250-cod_empresa   = s_branch_sov-sov_company.
         <ls_i250_list>-knw_sctb_i250-cod_filial    = s_branch_sov-sov_branch.
-        <ls_i250_list>-knw_sctb_i250-cd_plano_conta = ls_data-itm-glaccount.
+        <ls_i250_list>-knw_sctb_i250-cd_plano_conta = ls_data-glaccount.
+
+        READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                             active = abap_true.
+        IF sy-subrc IS INITIAL.
+          SHIFT <ls_i250_list>-knw_sctb_i250-cd_plano_conta LEFT DELETING LEADING '0'.
+        ENDIF.
 
       ENDLOOP.
 
-      " VL_LANCAMENTO final do cabeçalho (soma só dos créditos)
       ls_out-knw_sctb_i200-vl_lancamento = lv_vl_lancto.
 
-
       APPEND ls_out TO ls_out_obj-objetos.
-      APPEND ls_out_obj TO gt_out.
+
+      lv_count += 1.
+
+      " a cada 300 registros acumulados, fecha o "pacote" atual e inicia um novo
+      IF lv_count >= 300.
+        APPEND ls_out_obj TO gt_out.
+        CLEAR: ls_out_obj, lv_count.
+      ENDIF.
 
     ENDLOOP.
+
+    " flush do último pacote
+    IF ls_out_obj-objetos IS NOT INITIAL.
+      APPEND ls_out_obj TO gt_out.
+    ENDIF.
 
     ENDMETHOD.
 
@@ -466,19 +511,26 @@ CLASS lcl_process IMPLEMENTATION.
             <log>-returnreason = lv_ret-reason.
             <log>-response     = gv_proc.
       ELSE.
-        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
-          APPEND INITIAL LINE TO /pyxs/bp_sov_lanc_contabil=>lt_log ASSIGNING <log>.
-            <log>-timedate     = time.
-            <log>-lancamento   = ls_doc-objetos[ 1 ]-knw_sctb_i200-nr_lancamento.
-            <log>-id           = ls_doc-objetos[ 1 ]-knw_sctb_i200-dm_lancamento.
-            <log>-returncode   = lv_ret-code.
-            <log>-returnreason = lv_ret-reason.
-            <log>-response     = <lv_msg>->*.
-        ENDLOOP.
+***        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
+***          APPEND INITIAL LINE TO /pyxs/bp_sov_lanc_contabil=>lt_log ASSIGNING <log>.
+***            <log>-timedate     = time.
+***            <log>-lancamento   = ls_doc-objetos[ 1 ]-knw_sctb_i200-nr_lancamento.
+***            <log>-id           = ls_doc-objetos[ 1 ]-knw_sctb_i200-dm_lancamento.
+***            <log>-returncode   = lv_ret-code.
+***            <log>-returnreason = lv_ret-reason.
+***            <log>-response     = <lv_msg>->*.
+***        ENDLOOP.
       ENDIF.
 
     ENDLOOP.
 
+    ENDMETHOD.
+        METHOD cleanup.
+      CLEAR: s_branch_sov,
+             gt_out,
+             businessplace,
+             t_data,
+             gv_proc.
     ENDMETHOD.
 
 ENDCLASS.

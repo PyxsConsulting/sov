@@ -180,20 +180,20 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_year_inventory.
 
 
       BEGIN OF ty_knwh010,
-        cod_empresa     TYPE p LENGTH 15 DECIMALS 2,
-        cod_filial      TYPE p LENGTH 15 DECIMALS 2,
+        cod_empresa     TYPE string,
+        cod_filial      TYPE string,
         id_usuario_imp  TYPE string,
         cd_plano_conta  TYPE string,
         ds_complementar TYPE string,
         cd_produto_serv TYPE string,
         unidade         TYPE string,
-        vl_total        TYPE p LENGTH 15 DECIMALS 2,
-        qtde            TYPE p LENGTH 15 DECIMALS 2,
+        vl_total        TYPE string,
+        qtde            TYPE string,
         dm_sit_estoque  TYPE string,
         cd_pessoa_propr TYPE string,
-        vl_total_ir     TYPE p LENGTH 15 DECIMALS 2,
+        vl_total_ir     TYPE string,
         dt_inventario   TYPE string,
-        vl_unitario     TYPE p LENGTH 15 DECIMALS 2,
+        vl_unitario     TYPE string,
       END OF ty_knwh010,
 
       BEGIN OF ty_knwk200,
@@ -321,6 +321,8 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_year_inventory.
          supplier                    TYPE I_MaterialStockTimeSeries-supplier,
          customer                    TYPE I_MaterialStockTimeSeries-customer,
          valuationquantity           TYPE I_MaterialStockTimeSeries-MatlWrhsStkQtyInMatlBaseUnit,
+         stockvalue                  TYPE i_inventoryamtbyfsclperd-amountincompanycodecurrency,
+         currency                    TYPE i_companycode-currency,
          amountincompanycodecurrency TYPE i_inventoryamtbyfsclperd-amountincompanycodecurrency,
          movingaverageprice          TYPE i_productvaluationbasic-movingaverageprice,
          unitofmeasure               TYPE I_MaterialStockTimeSeries-materialbaseunit,
@@ -332,6 +334,13 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_year_inventory.
          unitofmeasurename           TYPE i_unitofmeasuretext-unitofmeasurename,
          referenceproducttype        TYPE i_producttype-referenceproducttype,
          iscoproduct                 TYPE i_productplantbasic-IsCoProduct,
+         organizationbpname1         TYPE i_supplier-organizationbpname1,
+         taxnumber1                  TYPE i_supplier-taxnumber1,
+         taxnumber2                  TYPE i_supplier-taxnumber2,
+         taxnumber3                  TYPE i_supplier-taxnumber3,
+         taxjurisdiction             TYPE i_supplier-taxjurisdiction,
+         country                     TYPE i_supplier-country,
+         bpaddrstreetname            TYPE i_supplier-bpaddrstreetname,
        END OF ty_grouped.
 
     CLASS-DATA: sel          TYPE ty_sel,
@@ -344,6 +353,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_year_inventory.
                 gs_company   TYPE ty_companycode,
                 gt_accounts  TYPE ty_t_accounts,
                 s_branch_sov TYPE /pyxs/sov_branch,
+                gt_params    TYPE TABLE OF /pyxs/sov_params,
                 "gt_sel2      TYPE TABLE OF ty_stock_value2,
                 gt_sel2 TYPE TABLE OF ty_grouped,
                 t_nfitem     TYPE TABLE OF ty_nfitem,
@@ -415,7 +425,9 @@ CLASS lhc_sovos_year_inventory IMPLEMENTATION.
     lcl_process=>sel-businessplace = keys[ 1 ]-%param-branch.
     lcl_process=>sel-fiscalperiod = keys[ 1 ]-%param-anomes+4.
     lcl_process=>sel-fiscalyear = keys[ 1 ]-%param-anomes(4).
-
+    IF keys[ 1 ]-%param-Material IS NOT INITIAL.
+      lcl_process=>sel-product = VALUE #( ( sign = 'I' option = 'EQ' low = keys[ 1 ]-%param-Material ) ).
+    ENDIF.
     "lcl_process=>sel-branch = keys[ 1 ]-%param-branch.
 
 
@@ -797,16 +809,16 @@ CLASS lcl_process IMPLEMENTATION.
 
       ELSE.
 
-        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
-          APPEND INITIAL LINE TO /pyxs/bp_sovos_year_inventory=>lt_log ASSIGNING <log>.
-          <log>-id = sy-tabix.
-          <log>-timedate = time.
-          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
-          <log>-material = ls_doc-objetos[ 1 ]-knwh010-cd_produto_serv.
-          <log>-response = <lv_msg>->*.
-          <log>-returncode = lv_ret-code.
-          <log>-returnreason = lv_ret-reason.
-        ENDLOOP.
+***        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
+***          APPEND INITIAL LINE TO /pyxs/bp_sovos_year_inventory=>lt_log ASSIGNING <log>.
+***          <log>-id = sy-tabix.
+***          <log>-timedate = time.
+***          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
+***          <log>-material = ls_doc-objetos[ 1 ]-knwh010-cd_produto_serv.
+***          <log>-response = <lv_msg>->*.
+***          <log>-returncode = lv_ret-code.
+***          <log>-returnreason = lv_ret-reason.
+***        ENDLOOP.
       ENDIF.
 
 
@@ -1218,7 +1230,7 @@ CLASS lcl_process IMPLEMENTATION.
     IF iv_with_time IS INITIAL.
       rv_date = |{ iv_date+6(2) }{ iv_date+4(2) }{ iv_date(4) }|.
     ELSE.
-      rv_date = |{ iv_date+6(2) }{ iv_date+4(2) }{ iv_date(4) }T12:00:00+03:00|.
+      rv_date = |{ iv_date+6(2) }{ iv_date+4(2) }{ iv_date(4) }T00:00:00-03:00|.
     ENDIF.
 
   ENDMETHOD.
@@ -1228,7 +1240,8 @@ CLASS lcl_process IMPLEMENTATION.
     DATA: ls_out    TYPE ty_main,
           ls_objeto TYPE ty_objetos,
           lv_now    TYPE string,
-          lv_dt_ini TYPE string.
+          lv_dt_ini TYPE string,
+          lv_count  TYPE i VALUE 0.
 
     DATA(lv_date) = cl_abap_context_info=>get_system_date( ).
     DATA(lv_time) = cl_abap_context_info=>get_system_time( ).
@@ -1257,12 +1270,19 @@ CLASS lcl_process IMPLEMENTATION.
     lv_dt_ini = |{ lv_last_day DATE = ISO }T03:00:00.000Z|.
 
     LOOP AT gt_sel2 INTO DATA(ls_data).
-      CLEAR: ls_out, ls_objeto.
+      CLEAR: ls_objeto.
+      "CLEAR: ls_out, ls_objeto.
 
 
       " ─── KNWH010 ───
 
-      data(lv_total) = ls_data-movingaverageprice * ls_data-valuationquantity.
+      DATA: lv_qtde        TYPE p LENGTH 15 DECIMALS 2,
+            lv_vl_unitario TYPE p LENGTH 15 DECIMALS 2,
+            lv_vl_total    TYPE p LENGTH 15 DECIMALS 2.
+
+      lv_qtde        = ls_data-valuationquantity.
+      lv_vl_unitario = ls_data-movingaverageprice.
+      lv_vl_total    = lv_vl_unitario * lv_qtde.
 
       ls_objeto-knwh010-cod_empresa     = CONV i( s_branch_sov-sov_company ).
       ls_objeto-knwh010-cod_filial      = CONV i( s_branch_sov-sov_branch ).
@@ -1270,23 +1290,47 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knwh010-cd_produto_serv = ls_data-product.
       ls_objeto-knwh010-unidade         = ls_data-unitofmeasure_e.
       "ls_objeto-knwh010-vl_total        = ls_data-amountincompanycodecurrency. "vl_total.
-      ls_objeto-knwh010-vl_total        = lv_total.
-      ls_objeto-knwh010-qtde            = ls_data-valuationquantity.
-      ls_objeto-knwh010-vl_unitario     = ls_data-movingaverageprice. "standardprice.
+      ls_objeto-knwh010-vl_total        = |{ lv_vl_total }|.
+      ls_objeto-knwh010-qtde            = |{ lv_qtde }|.
+      ls_objeto-knwh010-vl_unitario     = |{ lv_vl_unitario }|. "standardprice.
       ls_objeto-knwh010-dt_inventario   = lv_dt_ini.
-      ls_objeto-knwh010-dm_sit_estoque  = 0.
-      IF ls_data-customer IS NOT INITIAL OR ls_data-supplier IS NOT INITIAL.
-        ls_objeto-knwh010-dm_sit_estoque  = 1.
+      ls_objeto-knwh010-dm_sit_estoque  = '0'.
+      IF ls_data-customer IS NOT INITIAL.
+        ls_objeto-knwh010-dm_sit_estoque  = '1'.
+        ls_objeto-knwh010-cd_pessoa_propr = ls_data-customer.
+      ENDIF.
+      IF ls_data-supplier IS NOT INITIAL.
+        ls_objeto-knwh010-dm_sit_estoque  = '1'.
+        ls_objeto-knwh010-cd_pessoa_propr = ls_data-supplier.
       ENDIF.
       "ls_objeto-knwh010-vl_total_ir     = ls_data-amountincompanycodecurrency. " ls_data-productvaluationbasic-standardprice.
-      ls_objeto-knwh010-vl_total_ir     = lv_total.
+      ls_objeto-knwh010-vl_total_ir     = |{ lv_vl_total }|.
 
+      IF ls_objeto-knwh010-dm_sit_estoque  = '1'.
+        ls_objeto-knw0150-cod_empresa    = ls_objeto-knwh010-cod_empresa.
+        ls_objeto-knw0150-cod_filial     = ls_objeto-knwh010-cod_filial.
+        ls_objeto-knw0150-nm_razao_social = ls_data-organizationbpname1.
+        ls_objeto-knw0150-nr_cnpj_cpf     = COND #( WHEN ls_data-taxnumber1 IS NOT INITIAL THEN ls_data-taxnumber1 ELSE ls_data-taxnumber2 ).
+        ls_objeto-knw0150-nr_inscr_est    = ls_data-taxnumber3.
+        "SHIFT ls_objeto-knw0150-nr_inscr_est     LEFT DELETING LEADING '0'.
+        ls_objeto-knw0150-cd_municipio    = ls_data-taxjurisdiction+3.
+        ls_objeto-knw0150-cd_pais         = get_ibge_country( ls_data-country ).
+        ls_objeto-knw0150-cd_pessoa       = ls_objeto-knwh010-cd_pessoa_propr.
+        ls_objeto-knw0150-dt_inicial      = '1900-01-01T00:00:00-03:00'.
+        ls_objeto-knw0150-ds_endereco     = ls_data-bpaddrstreetname.
+      ENDIF.
 
 
       "NUMERO DA CONTA 20260619
       READ TABLE gt_accounts INTO DATA(ls_acc) WHERE product = ls_data-product.
       IF sy-subrc = 0.
         ls_objeto-knwh010-cd_plano_conta  = ls_acc-glaccount.
+
+        READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                             active = abap_true.
+        IF sy-subrc IS INITIAL.
+          SHIFT ls_objeto-knwh010-cd_plano_conta LEFT DELETING LEADING '0'.
+        ENDIF.
       ENDIF.
 
       " ─── KNW0190 ───
@@ -1294,14 +1338,14 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knw0190-cod_empresa    = CONV i( s_branch_sov-sov_company ).
       ls_objeto-knw0190-cod_filial     = CONV i( s_branch_sov-sov_branch ).
       "ls_objeto-knw0190-id_usuario_imp = sy-uname.
-      ls_objeto-knw0190-dt_inicial     = '1900-01-01T12:00:00+03:00'.
-      "ls_objeto-knw0190-dt_importacao  = '1900-01-01T12:00:00+03:00'.
+      ls_objeto-knw0190-dt_inicial     = '1900-01-01T00:00:00-03:00'.
+      "ls_objeto-knw0190-dt_importacao  = '1900-01-01T00:00:00-03:00'.
       ls_objeto-knw0190-ds_unidade     = ls_data-unitofmeasure_e.
       ls_objeto-knw0190-ds_descricao   = ls_data-unitofmeasurename.
 
       " ─── KNW0200 ───
 
-      ls_objeto-knw0200-dt_inicial         = '1900-01-01T12:00:00+03:00'.
+      ls_objeto-knw0200-dt_inicial         = '1900-01-01T00:00:00-03:00'.
       ls_objeto-knw0200-cod_empresa        = CONV i( s_branch_sov-sov_company ).
       ls_objeto-knw0200-cod_filial         = CONV i( s_branch_sov-sov_branch ).
       ls_objeto-knw0200-cd_produto_serv    = ls_data-product.
@@ -1309,7 +1353,14 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knw0200-unidade            = ls_data-unitofmeasure_e.
       "<item>-knw0200-dm_tipo_item       = '09'.
       ls_objeto-knw0200-cd_ncm             = normalize( p_str = ls_data-consumptiontaxctrlcode ).
-      ls_objeto-knw0200-cd_genero          = ls_objeto-knw0200-cd_ncm(2).
+
+      IF ls_objeto-knw0200-cd_ncm IS NOT INITIAL.
+        IF strlen( ls_objeto-knw0200-cd_ncm ) > 8.
+          ls_objeto-knw0200-cd_ncm = ls_objeto-knw0200-cd_ncm+0(8).
+        ENDIF.
+        ls_objeto-knw0200-cd_genero = ls_objeto-knw0200-cd_ncm(2).
+      ENDIF.
+
       ls_objeto-knw0200-dm_origem_produto  = ls_data-productorigintype.
       "ls_objeto-knw0200-nr_cest            =
       CASE ls_data-referenceproducttype.
@@ -1358,9 +1409,24 @@ CLASS lcl_process IMPLEMENTATION.
       ENDIF.
 
       APPEND ls_objeto TO ls_out-objetos.
-      APPEND ls_out TO t_out.
+      lv_count = lv_count + 1.
+
+      IF lv_count >= 100.
+        APPEND ls_out TO t_out.
+        CLEAR ls_out.
+        lv_count = 0.
+      ENDIF.
 
     ENDLOOP.
+
+    IF lv_count > 0.
+      APPEND ls_out TO t_out.
+    ENDIF.
+
+      "APPEND ls_objeto TO ls_out-objetos.
+      "APPEND ls_out TO t_out.
+
+    "ENDLOOP.
 
     "APPEND ls_out TO t_out.
 *
@@ -1557,6 +1623,8 @@ CLASS lcl_process IMPLEMENTATION.
       AND branch = @sel-businessplace
       INTO @s_branch_sov.
 
+    SELECT * FROM /pyxs/sov_params INTO TABLE @gt_params.
+
 ***    select    stock~material,
 ***         sum( stock~valuationquantity ) as val,
 ***         sum( stock~amountincompanycodecurrency ) as amountincompanycodecurrency,
@@ -1599,64 +1667,130 @@ CLASS lcl_process IMPLEMENTATION.
 ***      group by stock~material
 ***      INTO TABLE @gt_sel2.
 
-    select    stock~material,
-              stock~supplier,
-              stock~customer,
-         sum( stock~MatlWrhsStkQtyInMatlBaseUnit ) as val,
-         "sum( stock~\_InvtryPrcByPeriodEndDate( p_calendardate = '20260430' )-MaterialPriceUnitQty ) as amountincompanycodecurrency,
-         "sum( inv~amountincompanycodecurrency ) as amountincompanycodecurrency,
-         0 as amountincompanycodecurrency,
-         max( productvaluationbasic~movingaverageprice ) as movingaverageprice,
-         max( stock~materialbaseunit ) as un,
-         max( product~product ) as product,
-         max( productdescription~productdescription ) as productdescription,
-         max( productplantbasic~consumptiontaxctrlcode ) as consumptiontaxctrlcode,
-         max( productvaluationbasic~productorigintype ) as productorigintype,
-         max( product~\_baseunitofmeasure-unitofmeasure_e ) as unitofmeasure_e,
-         max( product~\_baseunitofmeasure\_text[ language = 'P' ]-unitofmeasurename ) as unitofmeasurename,
-         max( product~\_producttype-referenceproducttype ) as referenceproducttype,
-         max( productplantbasic~iscoproduct ) as iscoproduct
-          from I_MaterialStockTimeSeries(
-  p_startdate = @lv_date_f,
-  p_enddate = @lv_date_t,
-  p_periodtype = 'M' ) as stock
-    INNER JOIN i_plant AS plant0
-      ON  stock~plant = plant0~plant
-      and plant0~businessplace = @sel-businessplace
-    INNER JOIN i_valuationarea AS val
-      ON  val~valuationarea = plant0~valuationarea
-***    INNER JOIN I_InventoryAmtByFsclPerd(
-***           p_fiscalperiod = @lv_month,
-***           p_fiscalyear   = @lv_year
-***     ) AS inv
-***      ON inv~Ledger = '0L'
-***      and inv~CompanyCode = @sel-companycode
-***      and inv~CostEstimate = stock~CostEstimate
-    INNER JOIN i_product AS product
-      ON   stock~material = product~product
-    INNER JOIN i_productdescription AS productdescription
-      ON  stock~material = productdescription~product
-      AND productdescription~language = 'P'
-    INNER JOIN i_unitofmeasuretext AS unitofmeasuretext
-      ON  stock~materialbaseunit         = unitofmeasuretext~unitofmeasure
-      AND unitofmeasuretext~language  = 'P'
-    INNER JOIN i_productplantbasic AS productplantbasic
-      ON  stock~material       = productplantbasic~product
-      AND val~valuationarea  = productplantbasic~plant
-    INNER JOIN i_productvaluationbasic AS productvaluationbasic
-      ON  stock~material      = productvaluationbasic~product AND
-          val~valuationarea = productvaluationbasic~valuationarea
-    INNER JOIN i_plant AS plant
-      ON  val~valuationarea = plant~valuationarea
-    LEFT JOIN i_supplier AS supplier
-      ON stock~supplier = supplier~supplier
-    WHERE val~companycode  = @sel-companycode
-        AND stock~material     IN @sel-product
-        AND plant~businessplace = @sel-businessplace
-        AND productvaluationbasic~valuationtype = ''
-      group by stock~material,
-              stock~supplier,
-              stock~customer
+
+    SELECT stock~material,
+           stock~supplier,
+           stock~customer,
+
+           SUM( stock~matlwrhsstkqtyinmatlbaseunit ) AS val,
+
+           SUM( round( CAST( division( CAST( CASE WHEN productvaluationbasic~inventoryvaluationprocedure = 'S'
+                                                  THEN productvaluationbasic~standardprice
+                                                  ELSE productvaluationbasic~movingaverageprice
+                                                  END AS DEC( 23, 2 ) ),
+
+                                                  CASE WHEN productvaluationbasic~priceunitqty = 0
+                                                  THEN CAST( 1 AS DEC( 5, 0 ) )
+                                                  ELSE CAST( productvaluationbasic~priceunitqty AS DEC( 5, 0 ) )
+                                                  END, 5 ) AS DEC( 16, 7 ) )
+
+                                                  * CAST( stock~matlwrhsstkqtyinmatlbaseunit AS DEC( 21, 3 ) ), 2 ) ) AS stockvalue,
+
+           MAX( stock~\_companycode-currency ) AS currency,
+
+           0 AS amountincompanycodecurrency,
+           MAX( productvaluationbasic~movingaverageprice ) AS movingaverageprice,
+           MAX( stock~materialbaseunit ) AS un,
+           MAX( product~product ) AS product,
+           MAX( productdescription~productdescription ) AS productdescription,
+           MAX( productplantbasic~consumptiontaxctrlcode ) AS consumptiontaxctrlcode,
+           MAX( productvaluationbasic~productorigintype ) AS productorigintype,
+           MAX( product~\_baseunitofmeasure-unitofmeasure_e ) AS unitofmeasure_e,
+           MAX( product~\_baseunitofmeasure\_text[ language = 'P' ]-unitofmeasurename ) AS unitofmeasurename,
+           MAX( product~\_producttype-referenceproducttype ) AS referenceproducttype,
+           MAX( productplantbasic~iscoproduct ) AS iscoproduct,
+
+           MAX( CASE
+                  WHEN supplier~organizationbpname1 IS NULL
+                    OR supplier~organizationbpname1 = ' '
+                    THEN customer~organizationbpname1
+                  ELSE supplier~organizationbpname1
+                END ) AS organizationbpname1,
+
+           MAX( CASE
+                  WHEN supplier~taxnumber1 IS NULL
+                    OR supplier~taxnumber1 = ' '
+                    THEN customer~taxnumber1
+                  ELSE supplier~taxnumber1
+                END ) AS taxnumber1,
+
+           MAX( CASE
+                  WHEN supplier~taxnumber2 IS NULL
+                    OR supplier~taxnumber2 = ' '
+                    THEN customer~taxnumber2
+                  ELSE supplier~taxnumber2
+                END ) AS taxnumber2,
+
+           MAX( CASE
+                  WHEN supplier~taxnumber3 IS NULL
+                    OR supplier~taxnumber3 = ' '
+                    THEN customer~taxnumber3
+                  ELSE supplier~taxnumber3
+                END ) AS taxnumber3,
+
+           MAX( CASE
+                  WHEN supplier~taxjurisdiction IS NULL
+                    OR supplier~taxjurisdiction = ' '
+                    THEN customer~taxjurisdiction
+                  ELSE supplier~taxjurisdiction
+                END ) AS taxjurisdiction,
+
+           MAX( CASE
+                  WHEN supplier~country IS NULL
+                    OR supplier~country = ' '
+                    THEN customer~country
+                  ELSE supplier~country
+                END ) AS country,
+
+           MAX( CASE
+                  WHEN supplier~bpaddrstreetname IS NULL
+                    OR supplier~bpaddrstreetname = ' '
+                    THEN customer~bpaddrstreetname
+                  ELSE supplier~bpaddrstreetname
+                END ) AS bpaddrstreetname
+
+      FROM i_materialstocktimeseries( p_startdate  = @lv_date_t,
+                                      p_enddate    = @lv_date_t,
+                                      p_periodtype = 'D' ) AS stock
+
+        INNER JOIN i_plant AS plant0
+          ON  plant0~plant         = stock~plant
+          AND plant0~businessplace = @sel-businessplace
+
+        INNER JOIN i_valuationarea AS val
+          ON val~valuationarea = plant0~valuationarea
+
+        INNER JOIN i_product AS product
+          ON product~product = stock~material
+
+        LEFT OUTER JOIN i_productdescription AS productdescription
+          ON  productdescription~product  = stock~material
+          AND productdescription~language = 'P'
+
+        INNER JOIN i_productplantbasic AS productplantbasic
+          ON  productplantbasic~product = stock~material
+          AND productplantbasic~plant   = stock~plant
+
+        INNER JOIN i_productvaluationbasic AS productvaluationbasic
+          ON  productvaluationbasic~product       = stock~material
+          AND productvaluationbasic~valuationarea = val~valuationarea
+          AND productvaluationbasic~valuationtype = ''
+
+        LEFT OUTER JOIN i_supplier AS supplier
+          ON supplier~supplier = stock~supplier
+
+        LEFT OUTER JOIN i_customer AS customer
+          ON customer~customer = stock~customer
+
+      WHERE val~companycode           = @sel-companycode
+        AND stock~material           IN @sel-product
+        AND stock~inventorystocktype BETWEEN '01' AND '10'
+        AND stock~materialbaseunit   <> ''
+
+      GROUP BY stock~material,
+               stock~supplier,
+               stock~customer
+
       INTO TABLE @gt_sel2.
 
     SELECT SINGLE companycode, companycodename, chartofaccounts

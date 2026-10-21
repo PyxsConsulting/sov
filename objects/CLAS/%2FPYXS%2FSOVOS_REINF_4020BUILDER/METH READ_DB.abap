@@ -16,10 +16,17 @@
     SELECT * FROM /pyxs/sov_taxtype_irf INTO TABLE @mt_irf_types.
     SELECT * FROM /pyxs/sov_natren INTO TABLE @mt_nature.
 
+
+    SELECT single *
+      FROM i_addlcompanycodeinformation WITH PRIVILEGED ACCESS
+      WHERE companycode = @sel-company
+        AND companycodeparametertype = 'J_1BBR'
+        INTO @gs_branch_main.
+
     SELECT SINGLE *
       FROM /pyxs/sov_branch
     WHERE company_code = @sel-company
-      AND branch = @sel-branch
+      AND branch = @gs_branch_main-CompanyCodeParameterValue
       INTO @gs_branch_sov.
 
     LOOP AT mt_irf_types INTO DATA(ls_irf_type).
@@ -70,7 +77,7 @@
                 AND nfi~br_notafiscalitem = nft~br_notafiscalitem
                 FOR ALL ENTRIES IN @gt_data
              WHERE nfi~br_nfsourcedocumentnumber  = @gt_data-originalreferencedocument
-               AND nf~businessplace               = @sel-branch
+               "AND nf~businessplace               = @sel-branch
                AND nf~br_nfpartner                IN @sel-partner
                AND nf~br_notafiscal               IN @sel-document
                "AND nft~br_nfitemhaswithholdingtax = 'X'
@@ -95,7 +102,7 @@
               nf~br_nfhasserviceitem, nf~br_nfissuedby, nf~br_nfsituationcode,
               nft~br_taxtype, nft~br_nfitembaseamount, nft~br_nfitemtaxrate,
               nft~br_nfitemtaxamount, nft~br_nfitemwhldgcollectioncode, nft~taxgroup, nf~br_businessplacecnpj, nf~br_nfpartnercnpj,
-              nf~br_nfpartnername1, nfi~br_lc116servicecode, nf~br_nftotalamount
+              nf~br_nfpartnername1, nfi~br_lc116servicecode, nf~br_nftotalamount, nf~br_nfpostingdate
          FROM i_br_nfitem AS nfi
          INNER JOIN i_br_nfdocument AS nf
                  ON nf~br_notafiscal = nfi~br_notafiscal
@@ -104,7 +111,7 @@
                 AND nfi~br_notafiscalitem = nft~br_notafiscalitem
              WHERE nf~br_nfpostingdate IN @sel-creation
                "AND nfi~br_nfsourcedocumentnumber  = @lt_data_it-originalreferencedocument
-               AND nf~businessplace               = @sel-branch
+               "AND nf~businessplace               = @sel-branch
                AND nf~br_nfpartner                IN @sel-partner
                AND nf~br_notafiscal               IN @sel-document
                "AND nft~br_nfitemhaswithholdingtax = 'X'

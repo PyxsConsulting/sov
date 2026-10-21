@@ -69,6 +69,7 @@ TYPES: BEGIN OF ty_knw0500,
          cod_empresa      TYPE string,
          cod_filial       TYPE string,
          cd_plano_conta   TYPE string,
+         cd_plan_cta_tot  TYPE string,
          dm_natureza      TYPE string,
        END OF ty_knw0500,
 
@@ -184,6 +185,7 @@ TYPES:
           gv_date_to            TYPE string,
           gv_date_start         TYPE string,
           gt_account_type       TYPE TABLE OF /pyxs/sov_acctyp,
+          gt_params             TYPE TABLE OF /pyxs/sov_params,
           gv_proc       TYPE string,
           gs_planocontasuperior TYPE ty_planocontasuperior.
 
@@ -383,6 +385,8 @@ CLASS lcl_process IMPLEMENTATION.
 
     SELECT * FROM /pyxs/sov_acctyp ORDER BY accprefix DESCENDING INTO TABLE @gt_account_type.
 
+    SELECT * FROM /pyxs/sov_params INTO TABLE @gt_params.
+
     gv_date_start = sel-validitystartdate && '-01-01T00:00:00'.
     gv_date_from  = sel-validitystartdate && '-' && sel-validitystartdate+4(2) && '-' && sel-validitystartdate+6(2) && 'T00:00:00'.
     gv_date_to = '2199-12-31T00:00:00'.
@@ -391,28 +395,34 @@ CLASS lcl_process IMPLEMENTATION.
 
     METHOD  build_objects.
 
-    LOOP AT t_data INTO DATA(ls_root).
-
-      CHECK ls_root-chartofaccounts IS NOT INITIAL.
-      APPEND INITIAL LINE TO gt_main2 ASSIGNING FIELD-SYMBOL(<grp>).
-      <grp>-companhia-codigocia = s_branch_sov-sov_company.
-      <grp>-companhia-descricao = s_branch_sov-sov_branch.
-      <grp>-codigo = ls_root-chartofaccounts.
-      <grp>-descricao = ls_root-chartofaccountsname.
-      gv_grupo = <grp>-codigo.
-      <grp>-dataefetividadede = gv_date_start.
-      <grp>-dataefetividadeate = '2199-12-31T00:00:00'.
-      gv_chartofaccounts = ls_root-chartofaccounts.
-      EXIT.
-    ENDLOOP.
+***    LOOP AT t_data INTO DATA(ls_root).
+***
+***      CHECK ls_root-chartofaccounts IS NOT INITIAL.
+***      APPEND INITIAL LINE TO gt_main2 ASSIGNING FIELD-SYMBOL(<grp>).
+***      <grp>-companhia-codigocia = s_branch_sov-sov_company.
+***      <grp>-companhia-descricao = s_branch_sov-sov_branch.
+***      <grp>-codigo = ls_root-chartofaccounts.
+***      <grp>-descricao = ls_root-chartofaccountsname.
+***      gv_grupo = <grp>-codigo.
+***      <grp>-dataefetividadede = gv_date_start.
+***      <grp>-dataefetividadeate = '2199-12-31T00:00:00'.
+***      gv_chartofaccounts = ls_root-chartofaccounts.
+***      EXIT.
+***    ENDLOOP.
 
     IF sel-ignorefirstnode = abap_true.
-      DELETE t_data WHERE nodetype = 'R'.
+      "DELETE t_data WHERE nodetype = 'R'.
       READ TABLE t_data INTO DATA(ls_main) INDEX 1.
       CHECK sy-subrc IS INITIAL.
     ENDIF.
 
     process_node( ls_main ).
+
+    "flush final, caso não tenha finalizado na batelada anterior
+    IF gs_out_obj-objetos IS NOT INITIAL.
+      APPEND gs_out_obj TO gt_out.
+      CLEAR gs_out_obj.
+    ENDIF.
 
     ENDMETHOD.
 
@@ -422,7 +432,7 @@ CLASS lcl_process IMPLEMENTATION.
 *        add_tree_node( i_main ).
         add_children_nodes( i_main ).
       WHEN 'N'. "tree node
-*        add_tree_node( i_main ).
+        add_tree_node( i_main ).
         add_children_nodes( i_main ).
       WHEN 'L'. "GL account
         add_final_node( i_main ).
@@ -432,12 +442,70 @@ CLASS lcl_process IMPLEMENTATION.
   METHOD add_children_nodes.
 
     LOOP AT t_data INTO DATA(ls_main) WHERE parentnode = i_main-hierarchynode.
+      "CLEAR: gs_out_obj.
       process_node( ls_main ).
     ENDLOOP.
 
   ENDMETHOD.
 
   METHOD add_tree_node.
+
+    TYPES ty_char10 TYPE c LENGTH 10.
+    DATA:
+          ls_out TYPE ty_object.
+
+    DATA: lv_str TYPE i.
+
+    DATA: lv_timestamp TYPE string.
+
+    lv_timestamp = sy-datum(4) && '-' && sy-datum+4(2) && '-' && sy-datum+6(2) && 'T12:00:00+03:00'.
+
+    ls_out-knw0500-cod_empresa = s_branch_sov-sov_company.
+    ls_out-knw0500-cod_filial = s_branch_sov-sov_branch.
+    ls_out-knw0500-dt_inicial = '1900-01-01T12:00:00+03:00'.
+    ls_out-knw0500-dt_importacao = lv_timestamp.
+    ls_out-knw0500-cd_plano_conta = i_main-hierarchynode.
+
+    READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                         active = abap_true.
+    IF sy-subrc IS INITIAL.
+      SHIFT ls_out-knw0500-cd_plano_conta LEFT DELETING LEADING '0'.
+    ENDIF.
+    ls_out-knw0500-ds_plano_conta = i_main-hierarchynodetext.
+    ls_out-knw0500-dm_nivel = i_main-hierarchynodelevel - 1.
+    ls_out-knw0500-dm_tipo_conta = 'S'.
+
+    IF ls_out-knw0500-dm_nivel > 1.
+      ls_out-knw0500-cd_plan_cta_tot = i_main-parentnode.
+    ENDIF.
+
+    DATA(lv_account) = CONV ty_char10( i_main-hierarchynode ).
+    SHIFT lv_account LEFT DELETING LEADING '0'.
+
+    LOOP AT gt_account_type INTO DATA(ls_account_type).
+      CLEAR lv_str.
+      DATA(lv_prefix) = CONV ty_char10( ls_account_type-accprefix ).
+      SHIFT lv_prefix LEFT DELETING LEADING '0'.
+      lv_str = strlen( lv_prefix ).
+      IF lv_account(lv_str) = lv_prefix.
+        ls_out-knw0500-dm_natureza = ls_account_type-codigoacc.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    IF ls_out-knw0500-dm_natureza IS INITIAL.
+      ls_out-knw0500-dm_natureza = '09'.
+    ENDIF.
+
+    APPEND ls_out TO gs_out_obj-objetos.
+
+    IF lines( gs_out_obj-objetos ) >= 200.
+      APPEND gs_out_obj TO gt_out.
+      CLEAR gs_out_obj.
+    ENDIF.
+
+    "APPEND ls_out TO gs_out_obj-objetos.
+    "APPEND gs_out_obj TO gt_out.
+
   ENDMETHOD.
 
   METHOD add_final_node.
@@ -456,11 +524,16 @@ CLASS lcl_process IMPLEMENTATION.
     ls_out-knw0500-dt_inicial = '1900-01-01T12:00:00+03:00'.
     ls_out-knw0500-dt_importacao = lv_timestamp.
     ls_out-knw0500-cd_plano_conta = i_main-glaccount.
+
+    READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                         active = abap_true.
+    IF sy-subrc IS INITIAL.
+      SHIFT ls_out-knw0500-cd_plano_conta LEFT DELETING LEADING '0'.
+    ENDIF.
     ls_out-knw0500-ds_plano_conta = i_main-glaccountlongname.
     ls_out-knw0500-dm_nivel = i_main-hierarchynodelevel - 1.
     ls_out-knw0500-dm_tipo_conta = 'A'.
-
-
+    ls_out-knw0500-cd_plan_cta_tot = i_main-parentnode.
 
     DATA(lv_account) = CONV ty_char10( i_main-glaccount ).
     SHIFT lv_account LEFT DELETING LEADING '0'.
@@ -476,29 +549,18 @@ CLASS lcl_process IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
     IF ls_out-knw0500-dm_natureza IS INITIAL.
-        CASE lv_account(1).
-          WHEN '1'.
-            ls_out-knw0500-dm_natureza = '1'.
-          WHEN '2'.
-            ls_out-knw0500-dm_natureza = '2'.
-          WHEN '3'.
-            ls_out-knw0500-dm_natureza = '3'.
-          WHEN '4'.
-            ls_out-knw0500-dm_natureza = '4'.
-          WHEN '5'.
-            ls_out-knw0500-dm_natureza = '5'.
-          WHEN '6'.
-            ls_out-knw0500-dm_natureza = '6'.
-          WHEN '7'.
-            ls_out-knw0500-dm_natureza = '7'.
-          WHEN '8'.
-            ls_out-knw0500-dm_natureza = '8'.
-          WHEN OTHERS.
-            ls_out-knw0500-dm_natureza = '9'.
-        ENDCASE.
+      ls_out-knw0500-dm_natureza = '09'.
     ENDIF.
 
     APPEND ls_out TO gs_out_obj-objetos.
+
+    IF lines( gs_out_obj-objetos ) >= 200.
+      APPEND gs_out_obj TO gt_out.
+      CLEAR gs_out_obj.
+    ENDIF.
+
+    "APPEND ls_out TO gs_out_obj-objetos.
+    "APPEND gs_out_obj TO gt_out.
 
   ENDMETHOD.
 
@@ -507,7 +569,6 @@ CLASS lcl_process IMPLEMENTATION.
         DATA: lo_ret     TYPE REF TO data,
               lv_sucesso TYPE abap_boolean.
 
-      APPEND gs_out_obj TO gt_out.
 
         LOOP AT gt_out INTO DATA(ls_doc).
 
@@ -602,15 +663,15 @@ CLASS lcl_process IMPLEMENTATION.
                 <log>-returnreason = lv_ret-reason.
                 <log>-response     = gv_proc.
           ELSE.
-            LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
-              APPEND INITIAL LINE TO /pyxs/bp_sov_plano_contas=>lt_log ASSIGNING <log>.
-                <log>-timedate     = time.
-                <log>-chartofacc   = ls_doc-objetos[ 1 ]-knw0500-cd_plano_conta.
-                <log>-id           = ls_doc-objetos[ 1 ]-knw0500-dm_nivel.
-                <log>-returncode   = lv_ret-code.
-                <log>-returnreason = lv_ret-reason.
-                <log>-response     = <lv_msg>->*.
-            ENDLOOP.
+***            LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
+***              APPEND INITIAL LINE TO /pyxs/bp_sov_plano_contas=>lt_log ASSIGNING <log>.
+***                <log>-timedate     = time.
+***                <log>-chartofacc   = ls_doc-objetos[ 1 ]-knw0500-cd_plano_conta.
+***                <log>-id           = ls_doc-objetos[ 1 ]-knw0500-dm_nivel.
+***                <log>-returncode   = lv_ret-code.
+***                <log>-returnreason = lv_ret-reason.
+***                <log>-response     = <lv_msg>->*.
+***            ENDLOOP.
           ENDIF.
 
         ENDLOOP.

@@ -763,7 +763,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
         nr_documento           TYPE string,
         dt_emissao_doc         TYPE string,
         dt_entrada             TYPE string,
-        vl_total_mercad        TYPE p LENGTH 15 DECIMALS 2,
+        vl_total_mercad        TYPE string,
         vl_desconto            TYPE string,
         vl_frete               TYPE string,
         vl_seguro              TYPE string,
@@ -802,7 +802,7 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
         dm_finalidade          TYPE string,
         dm_destinatario        TYPE string,
         chave_registro         TYPE string,
-        vl_servico1            TYPE string,
+        vl_servico             TYPE string,
       END OF ty_knwc100,
 
       BEGIN OF ty_knwc111,
@@ -1158,6 +1158,23 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
          counter      TYPE i,
     END OF ty_counter_ref.
 
+TYPES: BEGIN OF ty_text_id,
+         br_notafiscal         TYPE i_br_nftexts-br_notafiscal,
+         br_nftaxpartnertextid TYPE i_br_nftexts-br_nftaxpartnertextid,
+       END OF ty_text_id.
+
+TYPES: BEGIN OF ty_text,
+         br_notafiscal         TYPE i_br_nftexts-br_notafiscal,
+         br_nftaxpartnertextid TYPE i_br_nftexts-br_nftaxpartnertextid,
+         br_nftext             TYPE i_br_nftexts-br_nftext,
+       END OF ty_text.
+
+TYPES: BEGIN OF ty_observ,
+         br_notafiscal TYPE i_br_nftexts-br_notafiscal,
+         observacao    TYPE string,
+       END OF ty_observ.
+
+
 
   PRIVATE SECTION.
     TYPES: BEGIN OF ty_nfs,
@@ -1245,13 +1262,17 @@ CLASS lcl_process DEFINITION FRIENDS lhc_sovos_fiscaldocuments.
                 t_tax_type         TYPE TABLE OF ty_tax_type,
                 t_ret_imp          TYPE ty_json_imp,
                 t_add_imp          TYPE TABLE OF ty_add_imp,
+                gt_params          TYPE TABLE OF /pyxs/sov_params,
                 s_branch_sov       TYPE /pyxs/sov_branch,
                 gv_icmscontributor TYPE c,
                 gv_branch_cnpj     TYPE string,
                 gs_comapany_code   TYPE i_companycode,
                 lt_counters_ref    TYPE TABLE OF ty_counter_ref,
                 lt_counters        TYPE TABLE OF ty_counter,
-                lt_seen_refs TYPE HASHED TABLE OF ty_seen_ref WITH UNIQUE KEY nr_doc_refer nr_documento.
+                lt_seen_refs TYPE HASHED TABLE OF ty_seen_ref WITH UNIQUE KEY nr_doc_refer nr_documento,
+                lt_text_ids TYPE TABLE OF ty_text_id,
+                lt_texts    TYPE TABLE OF ty_text,
+                t_observ    TYPE TABLE OF ty_observ.
 
     CLASS-METHODS: read_nf_db,
 
@@ -1411,6 +1432,26 @@ CLASS lcl_process IMPLEMENTATION.
     DATA: lo_ret     TYPE REF TO data,
           lv_sucesso TYPE abap_boolean.
 
+
+    DATA:
+          lv_utf8_xstring  TYPE xstring,
+          lv_gzip_xstring  TYPE xstring,
+          lv_base64        TYPE string.
+
+    DATA: ol_badi TYPE REF TO /PYXS/SOVOS_FISCALDOCS_DEF.
+
+    GET BADI ol_badi.
+    CALL BADI ol_badi->before_process
+          EXPORTING
+            iv_company       = sel-company
+            iv_branch        = sel-branch
+            iv_document      = sel-document
+            iv_creation      = sel-creation
+            iv_posting       = sel-posting
+            iv_nftype        = sel-nftype
+          CHANGING
+            t_out            = t_out.
+
     LOOP AT t_out INTO DATA(ls_doc).
 
       DATA(lv_docnum) = ls_doc-docnum.
@@ -1556,19 +1597,42 @@ CLASS lcl_process IMPLEMENTATION.
 
       ELSE.
 ***        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
-***          APPEND INITIAL LINE TO /pyxs/bp_sovos_fiscaldocuments=>lt_log ASSIGNING <log>.
-***          <log>-id = sy-tabix.
-***          <log>-timedate = time.
-***          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
-***          <log>-br_notafiscal  = lv_docnum. "ls_nf-doc-br_notafiscal .
-***          <log>-response = <lv_msg>->*.
-***          <log>-returncode = lv_ret-code.
-***          <log>-returnreason = lv_ret-reason.
+          lv_utf8_xstring = cl_abap_conv_codepage=>create_out( codepage = 'UTF-8' )->convert( source = json_out ).
+          cl_abap_gzip=>compress_binary_with_header(
+            EXPORTING
+              raw_in = lv_utf8_xstring
+            IMPORTING
+              gzip_out = lv_gzip_xstring ).
+          lv_base64 = cl_web_http_utility=>encode_x_base64( lv_gzip_xstring ).
+          APPEND INITIAL LINE TO /pyxs/bp_sovos_fiscaldocuments=>lt_log ASSIGNING <log>.
+          <log>-id = sy-tabix.
+          <log>-timedate = time.
+          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
+          <log>-br_notafiscal  = lv_docnum. "ls_nf-doc-br_notafiscal .
+          if lv_ret-code = 200.
+            <log>-response = lv_base64.
+          ELSE.
+            <log>-response = gv_proc. "<lv_msg>->*.
+          ENDIF.
+          <log>-returncode = lv_ret-code.
+          <log>-returnreason = lv_ret-reason.
 ***        ENDLOOP.
       ENDIF.
 
 
     ENDLOOP.
+
+    GET BADI ol_badi.
+    CALL BADI ol_badi->before_process
+          EXPORTING
+            iv_company       = sel-company
+            iv_branch        = sel-branch
+            iv_document      = sel-document
+            iv_creation      = sel-creation
+            iv_posting       = sel-posting
+            iv_nftype        = sel-nftype
+          CHANGING
+            t_out            = t_out_e.
 
     LOOP AT t_out_e INTO ls_doc.
 *      CLEAR lt_doc[].
@@ -1716,19 +1780,43 @@ CLASS lcl_process IMPLEMENTATION.
 
       ELSE.
 ***        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING FIELD-SYMBOL(<lv_msg>).
-***          APPEND INITIAL LINE TO /pyxs/bp_sovos_fiscaldocuments=>lt_log ASSIGNING <log>.
-***          <log>-id = sy-tabix.
-***          <log>-timedate = time.
-***          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
-***          <log>-br_notafiscal  = lv_docnum. "ls_nf-doc-br_notafiscal .
-***          <log>-response = <lv_msg>->*.
-***          <log>-returncode = lv_ret-code.
-***          <log>-returnreason = lv_ret-reason.
+          lv_utf8_xstring = cl_abap_conv_codepage=>create_out( codepage = 'UTF-8' )->convert( source = json_out ).
+          cl_abap_gzip=>compress_binary_with_header(
+            EXPORTING
+              raw_in = lv_utf8_xstring
+            IMPORTING
+              gzip_out = lv_gzip_xstring ).
+          lv_base64 = cl_web_http_utility=>encode_x_base64( lv_gzip_xstring ).
+          APPEND INITIAL LINE TO /pyxs/bp_sovos_fiscaldocuments=>lt_log ASSIGNING <log>.
+          <log>-id = sy-tabix.
+          <log>-timedate = time.
+          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
+          <log>-br_notafiscal  = lv_docnum. "ls_nf-doc-br_notafiscal .
+          if lv_ret-code = 200.
+            <log>-response = lv_base64.
+          ELSE.
+            <log>-response = gv_proc. "<lv_msg>->*.
+          ENDIF.
+          <log>-returncode = lv_ret-code.
+          <log>-returnreason = lv_ret-reason.
 ***        ENDLOOP.
       ENDIF.
 
 
     ENDLOOP.
+
+    GET BADI ol_badi.
+    CALL BADI ol_badi->before_process
+          EXPORTING
+            iv_company       = sel-company
+            iv_branch        = sel-branch
+            iv_document      = sel-document
+            iv_creation      = sel-creation
+            iv_posting       = sel-posting
+            iv_nftype        = sel-nftype
+          CHANGING
+            t_out_srv            = t_out_srv.
+
     LOOP AT t_out_srv INTO DATA(ls_doc_srv).
 *      CLEAR lt_doc[].
 *      APPEND ls_doc TO lt_doc.
@@ -1873,16 +1961,26 @@ CLASS lcl_process IMPLEMENTATION.
         <log>-returnreason = lv_ret-reason.
 
       ELSE.
-***        LOOP AT lo_ret->('MENSAGENS')->* ASSIGNING <lv_msg>.
-***          APPEND INITIAL LINE TO /pyxs/bp_sovos_fiscaldocuments=>lt_log ASSIGNING <log>.
-***          <log>-id = sy-tabix.
-***          <log>-timedate = time.
-***          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
-***          <log>-br_notafiscal = lv_docnum. "ls_nf-doc-br_notafiscal .
-***          <log>-response = <lv_msg>->*.
-***          <log>-returncode = lv_ret-code.
-***          <log>-returnreason = lv_ret-reason.
-***        ENDLOOP.
+
+          lv_utf8_xstring = cl_abap_conv_codepage=>create_out( codepage = 'UTF-8' )->convert( source = json_out ).
+          cl_abap_gzip=>compress_binary_with_header(
+            EXPORTING
+              raw_in = lv_utf8_xstring
+            IMPORTING
+              gzip_out = lv_gzip_xstring ).
+          lv_base64 = cl_web_http_utility=>encode_x_base64( lv_gzip_xstring ).
+          APPEND INITIAL LINE TO /pyxs/bp_sovos_fiscaldocuments=>lt_log ASSIGNING <log>.
+          <log>-id = sy-tabix.
+          <log>-timedate = time.
+          "READ TABLE t_nfdocs INTO ls_nf WITH KEY doc-br_nfenumber = ls_doc-objetos[ 1 ]-knwc100-nr_documento.
+          <log>-br_notafiscal  = lv_docnum. "ls_nf-doc-br_notafiscal .
+          if lv_ret-code = 200.
+            <log>-response = lv_base64.
+          ELSE.
+            <log>-response = gv_proc. "<lv_msg>->*.
+          ENDIF.
+          <log>-returncode = lv_ret-code.
+          <log>-returnreason = lv_ret-reason.
       ENDIF.
     ENDLOOP.
   ENDMETHOD.
@@ -2364,7 +2462,8 @@ CLASS lcl_process IMPLEMENTATION.
           "ls_importacao TYPE /pyxs/cl_fiscal_documents=>ty_importacoes,
           ls_objeto  TYPE ty_objetos,
           ls_main    TYPE ty_main,
-          lv_es      TYPE abap_bool.
+          lv_es      TYPE abap_bool,
+          lv_vl_total_mercad TYPE p LENGTH 15 DECIMALS 2.
     DELETE t_nfdocs WHERE doc-br_nfdocumenttype = '5'.
     IF t_nfdocs[] IS INITIAL.
       gv_proc = 'Nenhum documento processado'.
@@ -2423,12 +2522,15 @@ CLASS lcl_process IMPLEMENTATION.
       "                                                           THEN p_nfdoc-doc-br_nfsituationcode
       "                                                           "ELSE '00' ).
       ls_objeto-knwc100-cd_sit_documento     = p_nfdoc-doc-br_nfsituationcode.
+      IF ls_objeto-knwc100-cd_sit_documento IS INITIAL.
+        ls_objeto-knwc100-cd_sit_documento = '00'.
+      ENDIF.
       ls_objeto-knwc100-cod_filial         = p_nfdoc-doc-businessplace.
       ls_objeto-knwc100-cd_pessoa_remet_dest         = p_nfdoc-doc-br_nfpartner.
       ls_objeto-knwc100-dm_modal_frete = p_nfdoc-doc-freightpayer.
 
 
-      ls_objeto-knwc100-vl_total_mercad    = p_nfdoc-doc-br_nftotalamount.
+      lv_vl_total_mercad                   = p_nfdoc-doc-br_nftotalamount.
       ls_objeto-knwc100-vl_tot_n_fiscal    = p_nfdoc-doc-br_nftotalamount.
       ls_objeto-knwc100-vl_desconto    = p_nfdoc-doc-br_nfdiscountamount.
 
@@ -2441,7 +2543,7 @@ CLASS lcl_process IMPLEMENTATION.
       ls_objeto-knwc100-vl_sub_empr = '0.0'.
       ls_objeto-knwc100-dm_finalidade = '1'.
       ls_objeto-knwc100-dm_destinatario = '1'.
-      ls_objeto-knwc100-vl_servico1 = '0.0'.
+      ls_objeto-knwc100-vl_servico = '0.0'.
       ls_objeto-knwc100-vl_abat_n_trib = '0.0'.
 
       "Joao completar, deixa todos os iguais ao c100 preenchidos
@@ -2482,8 +2584,14 @@ CLASS lcl_process IMPLEMENTATION.
           ls_objeto-knw0150emitente-cod_empresa     = p_nfdoc-doc-companycode.
           ls_objeto-knw0150emitente-cod_filial      = p_nfdoc-doc-businessplace.
           ls_objeto-knw0150emitente-nm_razao_social = p_nfdoc-doc-br_nfpartnername1.
-          ls_objeto-knw0150emitente-nr_cnpj_cpf     = COND #( WHEN p_nfdoc-doc-br_nfpartnercnpj IS NOT INITIAL THEN p_nfdoc-doc-br_nfpartnercnpj ELSE p_nfdoc-doc-br_nfpartnercpf ).
+          "ls_objeto-knw0150emitente-nr_cnpj_cpf     = COND #( WHEN p_nfdoc-doc-br_nfpartnercnpj IS NOT INITIAL THEN p_nfdoc-doc-br_nfpartnercnpj ELSE p_nfdoc-doc-br_nfpartnercpf ).
+          IF p_nfdoc-doc-br_nfpartnercnpj CA '123456789'.
+              ls_objeto-knw0150emitente-nr_cnpj_cpf = p_nfdoc-doc-br_nfpartnercnpj.
+            ELSEIF p_nfdoc-doc-br_nfpartnercpf CA '123456789'.
+              ls_objeto-knw0150emitente-nr_cnpj_cpf = p_nfdoc-doc-br_nfpartnercpf.
+            ENDIF.
           ls_objeto-knw0150emitente-nr_inscr_est    = p_nfdoc-doc-br_nfpartnerstatetaxnumber. "ls_vendor-taxnumber3.
+          "SHIFT ls_objeto-knw0150emitente-nr_inscr_est LEFT DELETING LEADING '0'.
           ls_objeto-knw0150emitente-cd_municipio    = p_nfdoc-doc-br_nfpartnertaxjurisdiction+3. "ls_vendor-taxjurisdiction+3.
           ls_objeto-knw0150emitente-cd_pais         = get_ibge_country( p_nfdoc-doc-br_nfpartnercountrycode )."get_ibge_country( ls_vendor-country ).
           ls_objeto-knw0150emitente-cd_pessoa       = p_nfdoc-doc-br_nfpartner.
@@ -2508,6 +2616,7 @@ CLASS lcl_process IMPLEMENTATION.
           ls_objeto-knw0150destinatario-nm_razao_social = ls_branch-nome_fantasia.
           ls_objeto-knw0150destinatario-nr_cnpj_cpf     = p_nfdoc-doc-br_businessplacecnpj. "( |{ ls_branch-cnpj_raiz }{ ls_branch-cnpj_filial }| ).
           ls_objeto-knw0150destinatario-nr_inscr_est    = p_nfdoc-doc-br_nfpartnerstatetaxnumber. "ls_vendor-taxnumber3.
+          "SHIFT ls_objeto-knw0150destinatario-nr_inscr_est LEFT DELETING LEADING '0'.
           ls_objeto-knw0150destinatario-cd_municipio    = ls_branch-taxjurisdiction+3.
           ls_objeto-knw0150destinatario-cd_pais         = get_ibge_country( ls_branch-countrycode ).
           ls_objeto-knw0150destinatario-dt_inicial      = '1900-01-01T00:00:00-03:00'.
@@ -2534,6 +2643,7 @@ CLASS lcl_process IMPLEMENTATION.
           ls_objeto-knw0150emitente-nm_razao_social = ls_branch-nome_fantasia.
           ls_objeto-knw0150emitente-nr_cnpj_cpf     = p_nfdoc-doc-br_businessplacecnpj. "build_cnpj( |{ ls_branch-cnpj_raiz }{ ls_branch-cnpj_filial }| ).
           ls_objeto-knw0150emitente-nr_inscr_est    = p_nfdoc-doc-br_nfpartnerstatetaxnumber. "ls_vendor-taxnumber3. "br_nfissuerstatetaxnumber
+          "SHIFT ls_objeto-knw0150emitente-nr_inscr_est LEFT DELETING LEADING '0'.
           ls_objeto-knw0150emitente-cd_municipio    = ls_branch-taxjurisdiction+3.
           ls_objeto-knw0150emitente-cd_pais         = get_ibge_country( ls_branch-countrycode ).
           ls_objeto-knw0150emitente-ds_endereco     = ls_branch-endereco.
@@ -2549,8 +2659,14 @@ CLASS lcl_process IMPLEMENTATION.
           ls_objeto-knw0150destinatario-cod_filial      = p_nfdoc-doc-businessplace.
           ls_objeto-knw0150destinatario-cd_pessoa       = p_nfdoc-doc-br_nfpartner.
           ls_objeto-knw0150destinatario-nm_razao_social = p_nfdoc-doc-br_nfpartnername1.
-          ls_objeto-knw0150destinatario-nr_cnpj_cpf     = COND #( WHEN p_nfdoc-doc-br_nfpartnercnpj IS NOT INITIAL THEN p_nfdoc-doc-br_nfpartnercnpj ELSE p_nfdoc-doc-br_nfpartnercpf ).
+          "ls_objeto-knw0150destinatario-nr_cnpj_cpf     = COND #( WHEN p_nfdoc-doc-br_nfpartnercnpj IS NOT INITIAL THEN p_nfdoc-doc-br_nfpartnercnpj ELSE p_nfdoc-doc-br_nfpartnercpf ).
+          IF p_nfdoc-doc-br_nfpartnercnpj CA '123456789'.
+              ls_objeto-knw0150destinatario-nr_cnpj_cpf = p_nfdoc-doc-br_nfpartnercnpj.
+            ELSEIF p_nfdoc-doc-br_nfpartnercpf CA '123456789'.
+              ls_objeto-knw0150destinatario-nr_cnpj_cpf = p_nfdoc-doc-br_nfpartnercpf.
+            ENDIF.
           ls_objeto-knw0150destinatario-nr_inscr_est    = p_nfdoc-doc-br_nfpartnerstatetaxnumber."ls_customer-taxnumber3. "br_nfreceiverstatetaxnumber
+          "SHIFT ls_objeto-knw0150destinatario-nr_inscr_est LEFT DELETING LEADING '0'.
           ls_objeto-knw0150destinatario-ds_endereco     = p_nfdoc-doc-br_nfpartnerstreetname. "ls_customer-bpaddrstreetname.
           ls_objeto-knw0150destinatario-dt_inicial      = '1900-01-01T00:00:00-03:00'.
 
@@ -2566,6 +2682,22 @@ CLASS lcl_process IMPLEMENTATION.
 
       ENDCASE.
 
+        READ TABLE t_observ ASSIGNING FIELD-SYMBOL(<obs>) WITH KEY br_notafiscal = p_nfdoc-doc-br_notafiscal.
+        IF sy-subrc = 0.
+            APPEND INITIAL LINE TO ls_objeto-notaFiscalInfComplementarList ASSIGNING FIELD-SYMBOL(<info_com>).
+            "--- C110 ---
+            <info_com>-knwc110-dm_entrada_saida   = ls_objeto-knwc100-dm_entrada_saida.
+            <info_com>-knwc110-dm_emitente        = ls_objeto-knwc100-dm_emitente.
+            <info_com>-knwc110-serie_subserie     = ls_objeto-knwc100-serie_subserie.
+            <info_com>-knwc110-nr_documento       = ls_objeto-knwc100-nr_documento.
+            <info_com>-knwc110-dt_emissao_doc     = ls_objeto-knwc100-dt_emissao_doc.
+            <info_com>-knwc110-cod_empresa        = ls_objeto-knwc100-cod_empresa.
+            <info_com>-knwc110-cod_filial         = ls_objeto-knwc100-cod_filial.
+            <info_com>-knwc110-cd_pessoa_rem_dest = ls_objeto-knwc100-cd_pessoa_remet_dest.
+            <info_com>-knwc110-nr_item            = '1'.
+            <info_com>-knwc110-cd_ref_0450        = '000020'.
+            <info_com>-knwc110-ds_complementar    = <obs>-observacao.
+         ENDIF.
 *
 *      "--------------------------------------------------
 *      " Itens da nota – C170 + cadastros
@@ -2752,7 +2884,7 @@ CLASS lcl_process IMPLEMENTATION.
                 ENDIF.
                 <item>-knwc170-aliq_icms_sub = ls_tax_itm-br_nfitemtaxrate.
                 <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
-                ls_objeto-knwc100-vl_total_mercad -= ls_tax_itm-br_nfitemtaxamount.
+                lv_vl_total_mercad -= ls_tax_itm-br_nfitemtaxamount.
               ELSEIF ls_tax_type-br_icmspartilhasubdivisioncode = '004'.
                 <item>-knwc170-vl_fcp_st = ls_tax_itm-br_nfitemtaxamount.
                 <item>-knwc170-vl_icms_substit  += ls_tax_itm-br_nfitemtaxamount.
@@ -2849,7 +2981,7 @@ CLASS lcl_process IMPLEMENTATION.
 
                 <item>-knwc170-vl_contabil += ls_tax_itm-br_nfitemtaxamount.
                 <item>-knwc170-dm_apur_ipi = '0'.
-                ls_objeto-knwc100-vl_total_mercad -= ls_tax_itm-br_nfitemtaxamount.
+                lv_vl_total_mercad -= ls_tax_itm-br_nfitemtaxamount.
               ENDIF.
 *              IF ls_tax_itm-br_nfitemotherbaseamount IS NOT INITIAL.
 *                ls_objeto-knwc100-vl_abat_n_trib += ls_tax_itm-br_nfitemtaxamount.
@@ -2959,6 +3091,12 @@ CLASS lcl_process IMPLEMENTATION.
           <item>-knw0500-cd_plano_conta = ls_nfitem-nf-glaccount.
           IF <item>-knw0500-cd_plano_conta IS INITIAL.
             <item>-knw0500-cd_plano_conta = '99999999'.
+          ENDIF.
+
+          READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                               active = abap_true.
+          IF sy-subrc IS INITIAL.
+            SHIFT <item>-knw0500-cd_plano_conta LEFT DELETING LEADING '0'.
           ENDIF.
 
           <item>-knw0500-ds_plano_conta = ls_nfitem-glaccountname.
@@ -3086,6 +3224,7 @@ CLASS lcl_process IMPLEMENTATION.
             <c113>-knw0150-nr_cnpj_cpf         = ls_nf_ref_doc-doc-br_businessplacecnpj.
             <c113>-knw0150-cd_municipio        = ls_branch-taxjurisdiction+3.
             <c113>-knw0150-nr_inscr_est        = ls_nf_ref_doc-doc-br_nfpartnerstatetaxnumber."ls_customer-taxnumber3.
+            "SHIFT <c113>-knw0150-nr_inscr_est  LEFT DELETING LEADING '0'.
             <c113>-knw0150-cd_pais             = get_ibge_country( ls_branch-countrycode ).
             <c113>-knw0150-dt_inicial          = '1900-01-01T00:00:00-03:00'.
             <c113>-knw0150-cd_pessoa           = ls_branch-cod_estab.
@@ -3139,14 +3278,23 @@ CLASS lcl_process IMPLEMENTATION.
             <c113>-knw0150-cod_filial          = ls_objeto-knwc100-cod_filial.
 
             <c113>-knw0150-nm_razao_social     = ls_nf_ref_doc-doc-br_nfpartnername1.
-            <c113>-knw0150-nr_cnpj_cpf         = COND #( WHEN ls_nf_ref_doc-doc-br_nfpartnercnpj IS NOT INITIAL THEN ls_nf_ref_doc-doc-br_nfpartnercnpj ELSE ls_nf_ref_doc-doc-br_nfpartnercpf ).
+            "<c113>-knw0150-nr_cnpj_cpf         = COND #( WHEN ls_nf_ref_doc-doc-br_nfpartnercnpj IS NOT INITIAL THEN ls_nf_ref_doc-doc-br_nfpartnercnpj ELSE ls_nf_ref_doc-doc-br_nfpartnercpf ).
+            IF ls_nf_ref_doc-doc-br_nfpartnercnpj CA '123456789'.
+              <c113>-knw0150-nr_cnpj_cpf = ls_nf_ref_doc-doc-br_nfpartnercnpj.
+            ELSEIF ls_nf_ref_doc-doc-br_nfpartnercpf CA '123456789'.
+              <c113>-knw0150-nr_cnpj_cpf = ls_nf_ref_doc-doc-br_nfpartnercpf.
+            ENDIF.
             <c113>-knw0150-nr_inscr_est        = ls_nf_ref_doc-doc-br_nfpartnerstatetaxnumber."ls_customer-taxnumber3.
+            "SHIFT <c113>-knw0150-nr_inscr_est  LEFT DELETING LEADING '0'.
             <c113>-knw0150-cd_municipio        = ls_nf_ref_doc-doc-br_nfpartnertaxjurisdiction+3.
             <c113>-knw0150-cd_pais             = get_ibge_country( ls_nf_ref_doc-doc-br_nfpartnercountrycode ).
             <c113>-knw0150-dt_inicial          = '1900-01-01T00:00:00-03:00'.
             <c113>-knw0150-cd_pessoa           = ls_nf_ref_doc-doc-br_nfpartner.
             <c113>-knw0150-ds_endereco         = ls_nf_ref_doc-doc-br_nfpartnerstreetname.
-            <c113>-knw0150-nr_inscr_est        = ls_nf_ref_doc-doc-br_nfpartnerstatetaxnumber.
+
+            IF <c113>-knw0150-cd_pais <> '01058'.
+              <c113>-knw0150-cd_municipio = '9999999'.
+            ENDIF.
 
 
 
@@ -3173,6 +3321,8 @@ CLASS lcl_process IMPLEMENTATION.
         ENDLOOP. "t_ref_headers
 
       ENDLOOP.
+
+      ls_objeto-knwc100-vl_total_mercad = lv_vl_total_mercad.
 
       "--------------------------------------------------
       " C120 – Totais de impostos por nota (sumarização dos itens)
@@ -3327,6 +3477,8 @@ CLASS lcl_process IMPLEMENTATION.
     WHERE company_code = @sel-company
       AND branch = @sel-branch
       INTO TABLE @t_branch_sov.
+
+    SELECT * FROM /pyxs/sov_params INTO TABLE @gt_params.
 
     SELECT *
       FROM i_br_nfpartner
@@ -3510,7 +3662,70 @@ CLASS lcl_process IMPLEMENTATION.
       AND   nf~BR_NotaFiscalItem = @t_nfitem-nf-BR_ReferenceNFItem
       INTO TABLE @t_nf_ref.
 
+
+    SELECT DISTINCT
+       txt~BR_NotaFiscal,
+       txt~BR_NFTaxPartnerTextID
+          FROM I_BR_NFTexts AS txt
+          FOR ALL ENTRIES IN @t_nfdocs
+          WHERE txt~BR_NotaFiscal = @t_nfdocs-doc-BR_NotaFiscal
+          INTO TABLE @lt_text_ids.
+
+      IF lt_text_ids IS NOT INITIAL.
+
+        SELECT
+            txt~BR_NotaFiscal,
+            txt~BR_NFTaxPartnerTextID,
+            txt~BR_NFText
+            FROM I_BR_NFTexts AS txt
+            FOR ALL ENTRIES IN @lt_text_ids
+            WHERE txt~BR_NotaFiscal         = @lt_text_ids-BR_NotaFiscal
+              AND txt~BR_NFTaxPartnerTextID = @lt_text_ids-BR_NFTaxPartnerTextID
+            INTO TABLE @lt_texts.
+
+        SORT lt_texts BY br_notafiscal br_nftaxpartnertextid.
+
+        LOOP AT lt_texts INTO DATA(ls_text).
+
+          "Quebras de linha reais (CR/LF/TAB) -> espaço (antes do parse, JSON não aceita controle cru)
+          DATA(lv_text) = condense( replace( val  =  ls_text-br_nftext
+                                             pcre = `[\r\n\t]+`
+                                             with = ` `
+                                             occ  = 0 ) ).
+
+          "Escapes \uXXXX gravados no texto -> caractere real, via parser JSON nativo
+          TRY.
+              DATA(lv_json_txt) = |\{"TEXT":"{ replace( val = lv_text sub = `"` with = `` occ = 0 ) }"\}|.
+              CALL TRANSFORMATION id SOURCE XML lv_json_txt RESULT text = lv_text.
+            CATCH cx_transformation_error.
+              "Texto com barra invertida solta (JSON inválido): mantém sem decodificar
+          ENDTRY.
+
+          IF lv_text IS INITIAL.
+            CONTINUE.
+          ENDIF.
+
+          READ TABLE t_observ
+            ASSIGNING FIELD-SYMBOL(<fs_observ>)
+            WITH KEY br_notafiscal = ls_text-br_notafiscal.
+
+          IF sy-subrc <> 0.
+            APPEND INITIAL LINE TO t_observ ASSIGNING <fs_observ>.
+            <fs_observ>-br_notafiscal = ls_text-br_notafiscal.
+            <fs_observ>-observacao    = lv_text.
+          ELSE.
+            <fs_observ>-observacao = |{ <fs_observ>-observacao } { lv_text }|.
+          ENDIF.
+
+        ENDLOOP.
+
+        ENDIF.
+
+
+
   ENDMETHOD.
+
+
   METHOD normalize.
     normalized = p_str.
     TRANSLATE: normalized USING '. ',
@@ -3774,11 +3989,11 @@ CLASS lcl_process IMPLEMENTATION.
 
       ls_objeto-knw0150-nr_cep          = p_nfdoc-doc-br_nfpartnerpostalcode.
       REPLACE ALL OCCURRENCES OF '-' IN ls_objeto-knw0150-nr_cep WITH ''.
-      ls_objeto-knw0150-nr_inscr_munic = p_nfdoc-doc-br_nfpartnerstatetaxnumber.
+      ls_objeto-knw0150-nr_inscr_munic = p_nfdoc-doc-br_nfpartnermunicipaltaxnumber.
+      "SHIFT ls_objeto-knw0150-nr_inscr_munic  LEFT DELETING LEADING '0'.
       ls_objeto-knw0150-cd_municipio    = p_nfdoc-doc-br_nfpartnertaxjurisdiction+3(7).
       ls_objeto-knw0150-cd_pais         = get_ibge_country( p_nfdoc-doc-br_nfpartnercountrycode ).
       ls_objeto-knw0150-nr_cnpj_cpf     = p_nfdoc-doc-br_nfpartnercnpj.
-      ls_objeto-knw0150-nr_inscr_munic  = p_nfdoc-doc-br_nfpartnermunicipaltaxnumber.
       ls_objeto-knw0150-dm_contribuinte = '1'.
 
 
@@ -3902,7 +4117,7 @@ CLASS lcl_process IMPLEMENTATION.
       "ls_objeto-knwc100-vl_sub_empr = '0.0'.
       "ls_objeto-knwc100-dm_finalidade = '1'.
       "ls_objeto-knwc100-dm_destinatario = '1'.
-      "ls_objeto-knwc100-vl_servico1 = '0.0'.
+      "ls_objeto-knwc100-vl_servico = '0.0'.
       "ls_objeto-knwc100-vl_abat_n_trib = '0.0'.
 
 
@@ -3923,6 +4138,13 @@ CLASS lcl_process IMPLEMENTATION.
         ls_objeto-knw0500-cd_plan_cta_tot = ls_nfitem-chartofaccounts.
         ls_objeto-knw0500-ds_plano_conta = ls_nfitem-glaccountname.
         ls_objeto-knw0500-cd_plano_conta = ls_nfitem-nf-glaccount.
+
+        READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                             active = abap_true.
+        IF sy-subrc IS INITIAL.
+          SHIFT ls_objeto-knw0500-cd_plano_conta LEFT DELETING LEADING '0'.
+        ENDIF.
+
         ls_objeto-knw0500-dt_inicial = '1900-01-01T00:00:00-03:00'.
 
         APPEND INITIAL LINE TO ls_objeto-integracaonotafiscalservico ASSIGNING FIELD-SYMBOL(<item>).
@@ -3961,6 +4183,13 @@ CLASS lcl_process IMPLEMENTATION.
         <item>-knwa170-dm_emitente     = ls_objeto-knwa100-dm_emitente .
         <item>-knwa170-cd_pessoa_remet_dest     = ls_objeto-knwa100-cd_pessoa_remet_dest .
         <item>-knwa170-cd_plano_conta     = ls_nfitem-nf-glaccount.
+
+        READ TABLE gt_params TRANSPORTING NO FIELDS WITH KEY pcode  = 'ACC_ZERO'
+                                                             active = abap_true.
+        IF sy-subrc IS INITIAL.
+          SHIFT <item>-knwa170-cd_plano_conta LEFT DELETING LEADING '0'.
+        ENDIF.
+
         <item>-knwa170-cd_lst     = ls_nfitem-nf-br_lc116servicecode.
         <item>-knwa170-cd_prod_serv     = ls_nfitem-nf-material.
 
